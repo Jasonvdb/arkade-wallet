@@ -13,6 +13,7 @@ import {
 } from './protocol'
 import { lastCheckOf, readSent, rememberSent } from './receive'
 import { listEndpointsFor, sameListEndpoints } from './lists'
+import { rememberRequestsSeen } from './requestsSeen'
 
 type Call = <O extends EngineOp>(op: O, args: EngineCalls[O]['args']) => Promise<EngineCalls[O]['result']>
 
@@ -149,6 +150,7 @@ export class PaykitSync {
   getSnapshot = (): PaykitSnapshot => this.snapshot
 
   private publish(change: Partial<PaykitSnapshot>) {
+    if (change.requests) rememberRequestsSeen(this.ownId, change.requests.map(requestKey))
     this.snapshot = { ...this.snapshot, ...change }
     this.listeners.forEach((listener) => listener())
   }

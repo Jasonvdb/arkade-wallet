@@ -73,8 +73,10 @@ test('adds a Pubky contact, connects both ways and lists its payment request', a
   await expect(row).toHaveAttribute('data-amount', '0.00012500')
   await expect(row).toHaveAttribute('data-note', NOTE)
   await expect(row).toHaveAttribute('data-status', 'open')
+  // On the contact's page the section names the contact; the row's title is the note, not the name again.
   await expect(row).toContainText(NOTE)
-  await expect(row).toContainText('Alice')
+  await expect(row).not.toContainText('Alice')
+  await expect(page.getByTestId('paykit-incoming').getByText('Requests from Alice')).toBeVisible()
   await shot(page, testInfo, 'contact-request')
 
   // The contacts list: the contact, connected, and the request above it.

@@ -7,7 +7,7 @@ import Padded from '../../components/Padded'
 import QrCode from '../../components/QrCode'
 import Table, { type TableData } from '../../components/Table'
 import Text, { TextSecondary } from '../../components/Text'
-import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
+import { copyToClipboard } from '../../lib/clipboard'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import CheckMarkIcon from '../../icons/CheckMark'
 import CopyIcon from '../../icons/Copy'
@@ -72,13 +72,13 @@ function Placeholder({ status, onRetry }: { status: PaykitStatus; onRetry: () =>
 export default function PubkyIdentity() {
   const { status, identity, enrolment, appId, error, homeserver, retry } = useContext(PaykitContext)
   const { t } = useTranslation()
-  const copyToClipboard = useCopyToClipboard()
   const prefersReducedMotion = useReducedMotion()
 
-  const [copied, setCopied] = useState(false)
+  // The copy says so right under the ID, not in the toast at the top, which covers the header's title.
+  const [copied, setCopied] = useState<'copied' | 'failed'>()
   useEffect(() => {
     if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
+    const timer = setTimeout(() => setCopied(undefined), 2000)
     return () => clearTimeout(timer)
   }, [copied])
 
@@ -88,7 +88,7 @@ export default function PubkyIdentity() {
   const handleCopy = async () => {
     if (!pubkyId) return
     if (!prefersReducedMotion) hapticSubtle()
-    if (await copyToClipboard(pubkyId)) setCopied(true)
+    setCopied((await copyToClipboard(pubkyId)) ? 'copied' : 'failed')
   }
 
   const details: TableData = [
@@ -119,7 +119,7 @@ export default function PubkyIdentity() {
                     <QrCode value={pubkyId} />
                   </button>
                 </div>
-                <div className='flex max-w-full items-center gap-1'>
+                <div className='relative flex max-w-full items-center gap-1'>
                   <span className='truncate font-mono text-sm' data-testid='paykit-identity' data-pubky={identity}>
                     {prettyLongText(pubkyId, 14)}
                   </span>
@@ -130,8 +130,17 @@ export default function PubkyIdentity() {
                     onClick={handleCopy}
                     className='flex size-8 shrink-0 items-center justify-center text-neutral-500 [&_svg]:size-5'
                   >
-                    {copied ? <CheckMarkIcon /> : <CopyIcon />}
+                    {copied === 'copied' ? <CheckMarkIcon /> : <CopyIcon />}
                   </button>
+                  {copied ? (
+                    <span
+                      className='absolute top-full left-1/2 -translate-x-1/2 text-xs whitespace-nowrap text-neutral-500'
+                      role='status'
+                      data-testid='paykit-identity-copied'
+                    >
+                      {copied === 'failed' ? 'Could not copy' : 'Copied to clipboard'}
+                    </span>
+                  ) : null}
                 </div>
               </>
             ) : (

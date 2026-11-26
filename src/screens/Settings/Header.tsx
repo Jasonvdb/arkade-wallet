@@ -7,10 +7,11 @@ interface HeaderProps {
   auxText?: string
   backFunc?: () => void
   back?: boolean
+  backTestId?: string
   text: string
 }
 
-export default function Header({ auxFunc, auxText, backFunc, back, text }: HeaderProps) {
+export default function Header({ auxFunc, auxText, backFunc, back, backTestId, text }: HeaderProps) {
   const { goBack } = useContext(OptionsContext)
 
   return (
@@ -18,6 +19,7 @@ export default function Header({ auxFunc, auxText, backFunc, back, text }: Heade
       auxFunc={auxFunc}
       auxText={auxText}
       back={backFunc ? backFunc : back ? goBack : undefined}
+      backTestId={backTestId}
       heading={false}
       text={text}
     />

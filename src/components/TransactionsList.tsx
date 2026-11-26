@@ -29,6 +29,7 @@ import UnverifiedBadge from './UnverifiedBadge'
 import { useTransactionAmountDisplay } from '../hooks/useTransactionAmountDisplay'
 import { useTranslation } from '../providers/language'
 import { contactAddressForActivity, contactDisplayNameForAddress } from '../lib/contacts'
+import { paykitPaymentOf, usePaykitPayments, type PaykitPayment } from '../paykit/activity'
 
 const border = '1px solid color-mix(in srgb, var(--fg) 6%, transparent)'
 
@@ -37,11 +38,14 @@ const TransactionLine = ({
   onClick,
   isFirst,
   mode,
+  paykit,
 }: {
   tx: Tx
   onClick: () => void
   isFirst?: boolean
   mode: 'virtual' | 'static'
+  /** A Paykit payment: named after the contact, with the request's note. */
+  paykit?: PaykitPayment
 }) => {
   const { config } = useContext(ConfigContext)
   const { toFiatAmount } = useContext(FiatContext)
@@ -111,7 +115,13 @@ const TransactionLine = ({
     return <span className={`activity-row__icon activity-row__icon--${iconTone}`}>{icon}</span>
   }
 
+  const paykitKind = paykit
+    ? tx.type === 'sent'
+      ? t('settings.contactSent', { name: paykit.name })
+      : `Received from ${paykit.name}`
+    : undefined
   const kind =
+    paykitKind ??
     (contactName ? t('settings.contactSent', { name: contactName }) : undefined) ??
     lnSwapKind ??
     lnurlLabel(tx, t) ??
@@ -137,7 +147,8 @@ const TransactionLine = ({
   const Kind = () => <span className='activity-row__kind'>{kind}</span>
 
   const swapRoute = swap ? swapRouteLabel(tx) : ''
-  const When = () => <span className='activity-row__meta'>{swapRoute ? `${swapRoute} · ${date}` : date}</span>
+  const meta = swapRoute ? `${swapRoute} · ${date}` : paykit?.note ? `${paykit.note} · ${date}` : date
+  const When = () => <span className='activity-row__meta'>{meta}</span>
 
   const RawAmounts = () => {
     const configured = amountDisplay?.configured
@@ -270,6 +281,7 @@ export default function TransactionsList({
   const { navigate } = useContext(NavigationContext)
   const { assetMetadataCache, txs: allTxs } = useContext(WalletContext)
   const { t } = useTranslation()
+  const paykitPayments = usePaykitPayments()
   const visibleTxs = allTxs
     .filter((tx) => !shouldHideDevAssetTx(tx, assetMetadataCache))
     .filter((tx) => !addressFilter || contactAddressForActivity(tx) === addressFilter)
@@ -376,7 +388,13 @@ export default function TransactionsList({
             onEnter={() => handleClick(tx)}
             ariaLabel={ariaLabel(tx)}
           >
-            <TransactionLine onClick={() => handleClick(tx)} tx={tx} isFirst={index === 0} mode={mode} />
+            <TransactionLine
+              onClick={() => handleClick(tx)}
+              tx={tx}
+              isFirst={index === 0}
+              mode={mode}
+              paykit={paykitPaymentOf(paykitPayments, tx)}
+            />
           </Focusable>
         ))}
       </div>
@@ -429,6 +447,7 @@ export default function TransactionsList({
                     tx={tx}
                     isFirst={virtualItem.index === 0}
                     mode={mode}
+                    paykit={paykitPaymentOf(paykitPayments, tx)}
                   />
                 </Focusable>
               </div>

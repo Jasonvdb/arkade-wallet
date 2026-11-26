@@ -2,6 +2,7 @@ import type { IntentFeeConfig, IWallet, RouteQuote } from '@arkade-os/sdk'
 import { createSendRouter, fundedResult, WALLET_EXIT_RAIL } from '../lib/sendRouter'
 import { consoleError } from '../lib/logs'
 import { paykitConfig } from './config'
+import { paykitErrorText } from './errors'
 import { btcToSats } from './contacts'
 import type { RailOutcome, RailPayment } from './protocol'
 import type { PageRail } from './rail'
@@ -56,7 +57,7 @@ export interface PayProgress {
   stage: PayStage
   attemptId: string
   txid?: string
-  /** Why it failed, in words for the user. */
+  /** Why it failed, in words for the user (never an error's own message). */
   error?: string
 }
 
@@ -179,11 +180,9 @@ export const quoteExit = async (deps: ExitDeps, address: string, sats: number): 
 const outpoints = async (wallet: IWallet): Promise<Set<string>> =>
   new Set((await wallet.getSpendableVtxos()).map((vtxo) => `${vtxo.txid}:${vtxo.vout}`))
 
-/** In words, why an exit did not go through. */
-const exitError = (error: unknown): string => {
-  const message = error instanceof Error ? error.message : String(error)
-  return message ? `The on-chain payment did not go through: ${message}` : 'The on-chain payment did not go through'
-}
+/** What the send screen says about an exit that failed: the error itself goes to the console only. */
+const EXIT_FAILED = 'The on-chain payment did not go through. Nothing was sent.'
+const EXIT_UNKNOWN = 'The payment may have gone through. Check the request before paying again.'
 
 /**
  * The rail the engine calls for this identity. `deps()` reads the unlocked wallet at the time of the call.
@@ -231,7 +230,7 @@ export const walletRail = (ownId: string, deps: () => ExitDeps | undefined): Pag
       quote = await quoteExit(exitDeps, address, sats)
     } catch (error) {
       consoleError(error, 'Paykit could not quote the on-chain payment')
-      return fail(error instanceof Error ? error.message : String(error), base)
+      return fail(paykitErrorText(error, 'prepare'), base)
     }
     if (quote.total > approval.maxTotal) return fail('The network fee went up. Review the payment again.', base)
 
@@ -253,14 +252,9 @@ export const walletRail = (ownId: string, deps: () => ExitDeps | undefined): Pag
       // Definitely unpaid only when every coin the wallet could spend before is still unspent.
       const after = await outpoints(exitDeps.wallet).catch(() => undefined)
       const untouched = Boolean(before && after && [...before].every((outpoint) => after.has(outpoint)))
-      if (untouched) return fail(exitError(error), { ...base, fee: quote.fee })
-      writeAttempt(ownId, attemptId, { ...base, status: 'unknown', fee: quote.fee, error: exitError(error) })
-      report({
-        key,
-        stage: 'failed',
-        attemptId,
-        error: 'The payment may have gone through. Check before paying again.',
-      })
+      if (untouched) return fail(EXIT_FAILED, { ...base, fee: quote.fee })
+      writeAttempt(ownId, attemptId, { ...base, status: 'unknown', fee: quote.fee, error: EXIT_UNKNOWN })
+      report({ key, stage: 'failed', attemptId, error: EXIT_UNKNOWN })
       return { status: 'pending' }
     }
   }

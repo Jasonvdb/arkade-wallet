@@ -306,6 +306,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       if (targetIndex >= 0) {
         backStack.current = backStack.current.slice(0, targetIndex + 1)
       }
+      // Replacing back to a page on the stack shows that page: back from it goes below it, not to itself.
+      if (backStack.current[backStack.current.length - 1] === page) backStack.current.pop()
     }
 
     screenRef.current = page
