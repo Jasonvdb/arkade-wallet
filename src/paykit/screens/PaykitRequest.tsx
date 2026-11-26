@@ -79,6 +79,9 @@ export default function PaykitRequest() {
   const payment = paymentOf(request, data.receivedLists)
   const waitingForDetails = 'error' in payment && Boolean(payment.waitingForDetails)
   const attempt = identity ? attemptForRequest(identity, key) : undefined
+  // Once paid (or paying), the address is the one the payment went to. A contact replaces the address in its
+  // private details after it is paid, so the details held now may name a newer one.
+  const payTo = attempt?.address ?? ('address' in payment ? payment.address : undefined)
   const receipt = request.receipt
   const status = requestStatus(request.status, Boolean(receipt))
   const amountDisplay = buildTransactionAmountDisplay({ ...displayContext, satoshis: sats ?? 0 })
@@ -117,11 +120,7 @@ export default function PaykitRequest() {
     ['From', name, <UsersRound key='from' size={16} />],
     [
       'Pay to',
-      'address' in payment
-        ? prettyLongText(payment.address, 12)
-        : waitingForDetails
-          ? `Waiting for ${name}'s details`
-          : undefined,
+      payTo ? prettyLongText(payTo, 12) : waitingForDetails ? `Waiting for ${name}'s details` : undefined,
       <TypeIcon key='to' />,
     ],
     ['Payment details', privateDetails ? `Shared privately by ${name}` : undefined, <ShieldIcon key='details' />],
@@ -145,7 +144,7 @@ export default function PaykitRequest() {
               data-receipt={receipt ? 'received' : 'none'}
               data-txid={attempt?.txid}
               data-destination={request.destination.type}
-              data-pay-to={'address' in payment ? payment.address : undefined}
+              data-pay-to={payTo}
             >
               <span className='contact-avatar' aria-hidden='true'>
                 {initialFor(name)}
