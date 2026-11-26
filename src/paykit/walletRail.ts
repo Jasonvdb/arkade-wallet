@@ -5,6 +5,7 @@ import { paykitConfig } from './config'
 import { btcToSats } from './contacts'
 import type { RailOutcome, RailPayment } from './protocol'
 import type { PageRail } from './rail'
+import { verifyProof } from './receive'
 
 /**
  * The wallet's payment method for Paykit: it pays a Payment Request on-chain by a collaborative exit, the
@@ -185,8 +186,8 @@ const exitError = (error: unknown): string => {
 }
 
 /**
- * The rail the engine calls for this identity. `deps()` reads the unlocked wallet at the time of the call;
- * `verify` (receiving) is not wired yet.
+ * The rail the engine calls for this identity. `deps()` reads the unlocked wallet at the time of the call.
+ * `verify` checks a payer's proof on-chain (see `receive.ts`).
  */
 export const walletRail = (ownId: string, deps: () => ExitDeps | undefined): PageRail => {
   const answer = (record: AttemptRecord | undefined): RailOutcome | null => {
@@ -267,7 +268,10 @@ export const walletRail = (ownId: string, deps: () => ExitDeps | undefined): Pag
   return {
     pay,
     payment: async (attemptId) => answer(attemptOf(ownId, attemptId)),
-    // Receiving (the payee's check of a proof) comes with requesting money.
-    verify: async () => null,
+    verify: (check) =>
+      verifyProof(check, {
+        ownId,
+        ownAddress: async () => deps()?.wallet.getBoardingAddress(),
+      }),
   }
 }

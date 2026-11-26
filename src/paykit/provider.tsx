@@ -20,6 +20,7 @@ import { pubkyIdOf, secretToHex, storePrefixFor } from './identity'
 import type { EngineCalls, EngineEvent, EngineOp, RequestId } from './protocol'
 import { noPaymentsRail, type PageRail } from './rail'
 import { walletRail, type ExitDeps } from './walletRail'
+import { recordBoardingCoins } from './receive'
 import { identitySecretState, subscribeIdentitySecret } from './secret'
 import { PaykitSync, type PaykitSnapshot } from './sync'
 import { acquireTabLock } from './tabLock'
@@ -60,9 +61,34 @@ export interface PaykitContextValue extends PaykitState {
   /** The Payment Request the request screen shows. */
   focusedRequest?: RequestId
   focusRequest: (id: RequestId | undefined) => void
+  /** The request this wallet sent that the sent-request screen shows (its request hash). */
+  focusedSent?: string
+  focusSent: (requestHash: string | undefined) => void
+  /** The Pubky contact the new-request screen asks (z-base-32). */
+  requestContact?: string
+  setRequestContact: (pubkyId: string | undefined) => void
+  /**
+   * The contact page to show when the contacts screen opens next (a contact's address), set by a Paykit
+   * screen opened from it. Read once: `takeReturnContact` clears it.
+   */
+  takeReturnContact: () => string | undefined
+  setReturnContact: (address: string | undefined) => void
 }
 
-const NO_DATA: PaykitSnapshot = { connections: {}, requests: [], requestsLoaded: false }
+const NO_DATA: PaykitSnapshot = {
+  connections: {},
+  requests: [],
+  requestsLoaded: false,
+  activity: [],
+  activityLoaded: false,
+  checks: {},
+}
+
+/** How often the boarding coins are read into the seen-cache while a sent request waits for its payment. */
+const SEEN_POLL_MS = 5_000
+
+/** Activity statuses that still wait for a payment or its check. */
+const OPEN_ACTIVITY = new Set(['requested', 'accepted', 'proofReceived'])
 const noSync = { subscribe: () => () => {}, getSnapshot: () => NO_DATA }
 
 const notReady = () => Promise.reject(new Error('Paykit is not ready'))
@@ -77,6 +103,10 @@ export const PaykitContext = createContext<PaykitContextValue>({
   data: NO_DATA,
   refreshContacts: () => {},
   focusRequest: () => {},
+  focusSent: () => {},
+  setRequestContact: () => {},
+  takeReturnContact: () => undefined,
+  setReturnContact: () => {},
 })
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -96,7 +126,7 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
   const listeners = useRef(new Set<(event: EngineEvent) => void>())
   // The rail the engine calls: the wallet's collaborative exit, read from the wallet when a payment runs.
   const railRef = useRef<PageRail>(noPaymentsRail)
-  const { svcWallet } = useContext(WalletContext)
+  const { svcWallet, reloadWallet } = useContext(WalletContext)
   const { calcOnchainOutputFee, intentFee } = useContext(FeesContext)
   const { aspInfo } = useContext(AspContext)
   const exitDeps = useRef<ExitDeps>()
@@ -104,6 +134,17 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
     ? { wallet: svcWallet, outputFee: calcOnchainOutputFee, intentFee, dust: () => Number(aspInfo.dust) }
     : undefined
   const [focusedRequest, setFocusedRequest] = useState<RequestId>()
+  const [focusedSent, setFocusedSent] = useState<string>()
+  const [requestContact, setRequestContact] = useState<string>()
+  const returnContact = useRef<string>()
+  const takeReturnContact = useCallback(() => {
+    const address = returnContact.current
+    returnContact.current = undefined
+    return address
+  }, [])
+  const setReturnContact = useCallback((address: string | undefined) => {
+    returnContact.current = address
+  }, [])
 
   useEffect(() => {
     if (!paykitConfig.enabled) return setState({ status: 'off' })
@@ -232,6 +273,33 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
   const data = useSyncExternalStore(syncSource.subscribe, syncSource.getSnapshot)
   const refreshContacts = useCallback(() => sync?.refresh(), [sync])
 
+  // While a sent request waits for its payment, keep the seen-cache of boarding coins (see `receive.ts`): a
+  // coin the wallet boards leaves the boarding list, and the cache still dates and proves it.
+  const awaitingPayment = data.activity.some((item) => OPEN_ACTIVITY.has(item.status))
+  useEffect(() => {
+    if (!syncIdentity || !awaitingPayment) return
+    const read = () => {
+      const wallet = exitDeps.current?.wallet
+      if (wallet) recordBoardingCoins(syncIdentity, wallet).catch(() => {})
+    }
+    read()
+    const timer = setInterval(read, SEEN_POLL_MS)
+    return () => clearInterval(timer)
+  }, [syncIdentity, awaitingPayment])
+
+  // A confirmed payment is the wallet's own incoming coin: refresh the balance now rather than at the next poll.
+  const reload = useRef(reloadWallet)
+  reload.current = reloadWallet
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (event.type === 'activityUpdated' && event.activity.status === 'receipted') {
+          reload.current().catch((error) => consoleError(error, 'Paykit could not refresh the balance'))
+        }
+      }),
+    [subscribe],
+  )
+
   const value = useMemo<PaykitContextValue>(
     () => ({
       ...state,
@@ -244,8 +312,26 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
       refreshContacts,
       focusedRequest,
       focusRequest: setFocusedRequest,
+      focusedSent,
+      focusSent: setFocusedSent,
+      requestContact,
+      setRequestContact,
+      takeReturnContact,
+      setReturnContact,
     }),
-    [state, retry, call, subscribe, data, refreshContacts, focusedRequest],
+    [
+      state,
+      retry,
+      call,
+      subscribe,
+      data,
+      refreshContacts,
+      focusedRequest,
+      focusedSent,
+      requestContact,
+      takeReturnContact,
+      setReturnContact,
+    ],
   )
 
   return <PaykitContext.Provider value={value}>{children}</PaykitContext.Provider>

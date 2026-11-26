@@ -28,7 +28,7 @@ import { NavigationContext, Pages } from '../../providers/navigation'
 import { useTranslation } from '../../providers/language'
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
 import { WalletContext } from '../../providers/wallet'
-import { ConnectionStatus, IncomingRequests, shortPubky } from '../../paykit/components/ContactsPaykit'
+import { ConnectionStatus, IncomingRequests, SentRequests, shortPubky } from '../../paykit/components/ContactsPaykit'
 import { paykitConfig } from '../../paykit/config'
 import { pubkyIdOfContact } from '../../paykit/contacts'
 import { PaykitContext } from '../../paykit/provider'
@@ -39,15 +39,26 @@ const initialFor = (label: string): string => label.trim().charAt(0).toUpperCase
 
 export default function Contacts() {
   const { backupContacts } = useContext(BackupContext)
-  const { navigate } = useContext(NavigationContext)
+  const { navigate, direction } = useContext(NavigationContext)
   const { setSendInfo } = useContext(FlowContext)
   const { txs } = useContext(WalletContext)
-  const { identity: ownPubky, data: paykit, refreshContacts } = useContext(PaykitContext)
+  const {
+    identity: ownPubky,
+    data: paykit,
+    refreshContacts,
+    setRequestContact,
+    setReturnContact,
+    takeReturnContact,
+  } = useContext(PaykitContext)
   const { t } = useTranslation()
   const copyAddress = useCopyToClipboard()
   const [contacts, setContacts] = useState(readContacts)
   const [recents, setRecents] = useState(readRecents)
-  const [selected, setSelected] = useState<string>()
+  // Back from a Paykit screen opened on a contact's page: that contact's page again. Opened any other way, the list.
+  const [selected, setSelected] = useState<string | undefined>(() => {
+    const returnTo = takeReturnContact()
+    return direction === 'back' ? returnTo : undefined
+  })
   const [editing, setEditing] = useState(false)
   const [mode, setMode] = useState<EditorMode>('new')
   const [address, setAddress] = useState('')
@@ -126,6 +137,14 @@ export default function Contacts() {
     setDeleting(false)
   }
 
+  // Paykit: ask a connected Pubky contact for a payment.
+  const requestPayment = () => {
+    if (!contact || !contactPubky) return
+    setRequestContact(contactPubky)
+    setReturnContact(contact.address)
+    navigate(Pages.PaykitNewRequest)
+  }
+
   const send = () => {
     if (!contact) return
     setSendInfo({ ...emptySendInfo, recipient: contact.address })
@@ -200,11 +219,16 @@ export default function Contacts() {
                     </div>
                   </div>
                   {contactPubky ? (
-                    <p className='paykit-contact-hint'>
-                      {connectionOf(contactPubky) === 'connected'
-                        ? `You and ${contactDisplayName(contact)} can send each other payment requests.`
-                        : `Share your Pubky ID with ${contactDisplayName(contact)}. Once they add you, you can send each other payment requests.`}
-                    </p>
+                    <>
+                      <p className='paykit-contact-hint'>
+                        {connectionOf(contactPubky) === 'connected'
+                          ? `You and ${contactDisplayName(contact)} can send each other payment requests.`
+                          : `Share your Pubky ID with ${contactDisplayName(contact)}. Once they add you, you can send each other payment requests.`}
+                      </p>
+                      {connectionOf(contactPubky) === 'connected' ? (
+                        <Button label='Request payment' onClick={requestPayment} testId='paykit-request-contact' />
+                      ) : null}
+                    </>
                   ) : (
                     <Button label={t('contacts.sendToName', { name: contactDisplayName(contact) })} onClick={send} />
                   )}
@@ -220,8 +244,10 @@ export default function Contacts() {
                 </section>
                 {contactPubky ? (
                   <div className='contact-history'>
+                    <SentRequests payer={contactPubky} />
                     <IncomingRequests
                       payee={contactPubky}
+                      label={`Requests from ${contactDisplayName(contact)}`}
                       emptyText={`No payment requests from ${contactDisplayName(contact)} yet.`}
                     />
                   </div>
@@ -239,6 +265,7 @@ export default function Contacts() {
             ) : (
               <>
                 <IncomingRequests />
+                <SentRequests />
                 <section className='settings-section'>
                   <div className='contact-section-head'>
                     <p className='settings-section-label'>{t('contacts.saved')}</p>

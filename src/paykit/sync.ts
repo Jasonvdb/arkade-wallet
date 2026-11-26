@@ -1,7 +1,15 @@
 import { consoleError } from '../lib/logs'
 import { readContacts } from '../lib/contacts'
 import { pubkyIdOfContact, readConnections, writeConnections, type Connection, type ConnectionRecord } from './contacts'
-import type { EngineCalls, EngineEvent, EngineOp, OneTimeRequest } from './protocol'
+import {
+  PaykitCallError,
+  type EngineCalls,
+  type EngineEvent,
+  type EngineOp,
+  type OneTimeRequest,
+  type PayeeRequest,
+} from './protocol'
+import { lastCheckOf, readSent, rememberSent } from './receive'
 
 type Call = <O extends EngineOp>(op: O, args: EngineCalls[O]['args']) => Promise<EngineCalls[O]['result']>
 
@@ -13,9 +21,39 @@ export interface PaykitSnapshot {
   requests: OneTimeRequest[]
   /** `requests` has been read from the engine at least once since it started. */
   requestsLoaded: boolean
+  /** The Payment Requests this wallet sent as payee, and payments received, in the engine's order. */
+  activity: PayeeRequest[]
+  /** `activity` has been read from the engine at least once since it started. */
+  activityLoaded: boolean
+  /** Per activity record: where the check of a payer's proof stands. */
+  checks: Record<string, ProofCheck>
 }
 
-const EMPTY: PaykitSnapshot = { connections: {}, requests: [], requestsLoaded: false }
+/**
+ * Where the wallet's check of a proof stands, for an activity record in `proofReceived`:
+ * - `checking`: the payment is not found on-chain yet (or esplora did not answer); it is checked again;
+ * - `short`: the transaction pays the address less than requested; not confirmed, no receipt;
+ * - `refused`: the engine refused the payment (such as a payment time before the request);
+ * - `confirmed`: verified, and the receipt sent.
+ */
+export interface ProofCheck {
+  state: 'checking' | 'short' | 'refused' | 'confirmed'
+  txid?: string
+  receivedSats?: number
+  reason?: string
+}
+
+const EMPTY: PaykitSnapshot = {
+  connections: {},
+  requests: [],
+  requestsLoaded: false,
+  activity: [],
+  activityLoaded: false,
+  checks: {},
+}
+
+/** How soon a proof is checked again: soon while the payment is not found, rarely once it is known short. */
+const RECHECK_MS = { checking: 5_000, short: 60_000, refused: 60_000 } as const
 
 /** How often the contacts are checked while one waits to be admitted, or the requests are not read yet. */
 const TICK_MS = 3_000
@@ -44,6 +82,9 @@ export class PaykitSync {
   private timer?: ReturnType<typeof setTimeout>
   private ticking = false
   private stopped = false
+  /** Records whose proof is being checked now, and when each may be checked again. */
+  private confirming = new Set<string>()
+  private nextCheck = new Map<string, number>()
   private unsubscribe: () => void
 
   constructor(
@@ -120,6 +161,8 @@ export class PaykitSync {
       }
       this.publish({ connections: this.connectionsOf(ids) })
       if (!this.snapshot.requestsLoaded) await this.loadRequests()
+      if (!this.snapshot.activityLoaded) await this.loadActivity()
+      this.confirmDue()
     } finally {
       this.ticking = false
       if (!this.stopped) this.timer = setTimeout(() => void this.tick(), TICK_MS)
@@ -160,6 +203,100 @@ export class PaykitSync {
     }
   }
 
+  private async loadActivity() {
+    try {
+      const activity = await this.call('payeeActivity', undefined)
+      const known = new Set(this.snapshot.activity.map((item) => item.record))
+      this.publish({
+        activity: [...this.snapshot.activity, ...activity.filter((item) => !known.has(item.record))],
+        activityLoaded: true,
+      })
+    } catch {
+      // Read again at the next tick.
+    }
+  }
+
+  private upsertActivity(activity: PayeeRequest) {
+    const known = this.snapshot.activity.some((item) => item.record === activity.record)
+    this.publish({
+      activity: known
+        ? this.snapshot.activity.map((item) => (item.record === activity.record ? activity : item))
+        : [activity, ...this.snapshot.activity],
+    })
+    this.confirmDue()
+  }
+
+  private setCheck(record: string, check: ProofCheck) {
+    this.publish({ checks: { ...this.snapshot.checks, [record]: check } })
+  }
+
+  /**
+   * Confirms each payment whose proof arrived: the engine verifies it with the rail (on-chain) and sends the
+   * payer a receipt. A proof that does not verify yet is checked again a little later; one that pays too
+   * little is shown as such and checked again only rarely. The user does not approve receipts one by one: a
+   * verified payment is what was asked for.
+   */
+  private confirmDue() {
+    if (this.stopped) return
+    const now = Date.now()
+    for (const activity of this.snapshot.activity) {
+      if (activity.status !== 'proofReceived' || activity.divergent) continue
+      const { record } = activity
+      if (this.confirming.has(record) || (this.nextCheck.get(record) ?? 0) > now) continue
+      this.confirming.add(record)
+      void this.confirm(activity).finally(() => this.confirming.delete(record))
+    }
+  }
+
+  private async confirm(activity: PayeeRequest) {
+    const { record } = activity
+    const retry = (state: keyof typeof RECHECK_MS) => this.nextCheck.set(record, Date.now() + RECHECK_MS[state])
+    try {
+      const receipt = await this.call('confirmPayment', record)
+      if (this.stopped) return
+      const check = lastCheckOf(activity.attemptId)
+      if (receipt) {
+        this.nextCheck.delete(record)
+        const sent = activity.requestHash ? readSent(this.ownId)[activity.requestHash] : undefined
+        if (sent && check?.kind === 'verified') {
+          rememberSent(this.ownId, {
+            ...sent,
+            txid: check.txid,
+            receivedSats: check.receivedSats,
+            paidAtMs: check.paidAtMs,
+          })
+        }
+        this.setCheck(record, {
+          state: 'confirmed',
+          txid: check?.kind === 'verified' ? check.txid : undefined,
+          receivedSats: check?.kind === 'verified' ? check.receivedSats : undefined,
+        })
+        return
+      }
+      if (check?.kind === 'short') {
+        retry('short')
+        this.setCheck(record, { state: 'short', txid: check.txid, receivedSats: check.receivedSats })
+      } else if (check?.kind === 'invalid') {
+        retry('refused')
+        this.setCheck(record, { state: 'refused', reason: check.reason })
+      } else {
+        retry('checking')
+        this.setCheck(record, { state: 'checking', txid: check?.kind === 'notFound' ? check.txid : undefined })
+      }
+    } catch (error) {
+      if (this.stopped) return
+      if (error instanceof PaykitCallError && error.code === 'refused') {
+        retry('refused')
+        this.setCheck(record, { state: 'refused', reason: error.reason })
+      } else {
+        // The rail could not check now (esplora down), or the engine was busy: check again soon.
+        consoleError(error, 'Paykit could not check a payment')
+        retry('checking')
+        this.setCheck(record, { ...this.snapshot.checks[record], state: 'checking' })
+      }
+    }
+  }
+
   private upsertRequest(request: OneTimeRequest) {
     const key = requestKey(request)
     const rest = this.snapshot.requests.filter((item) => requestKey(item) !== key)
@@ -175,7 +312,8 @@ export class PaykitSync {
       case 'started':
         // A restarted engine tells nothing it held at start: read the state again.
         this.allowed = new Set()
-        this.publish({ requestsLoaded: false })
+        this.nextCheck.clear()
+        this.publish({ requestsLoaded: false, activityLoaded: false })
         void this.tick()
         return
       case 'messageReceived':
@@ -186,6 +324,10 @@ export class PaykitSync {
       case 'requestUpdated':
       case 'receiptReceived':
         this.upsertRequest(event.request)
+        return
+      case 'proofReceived':
+      case 'activityUpdated':
+        this.upsertActivity(event.activity)
         return
     }
   }

@@ -28,6 +28,8 @@ export interface PaykitConfig {
    * waits for the operator's next batch round, so this is well above one round.
    */
   payLimitMs: number
+  /** The esplora API the rail checks a payer's proof against (`GET /tx/{txid}`). */
+  esploraUrl: string
 }
 
 const env = (value: string | undefined): string | undefined => fromRuntimeEnv(value)?.trim() || undefined
@@ -61,4 +63,5 @@ export const paykitConfig: PaykitConfig = {
     { identifier: SEGWIT_ENDPOINT, fractionDigits: BTC_FRACTION_DIGITS },
   ],
   payLimitMs: 180_000,
+  esploraUrl: env(import.meta.env.VITE_PAYKIT_ESPLORA_URL) ?? 'http://127.0.0.1:3000/api',
 }
