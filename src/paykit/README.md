@@ -18,6 +18,7 @@ the `paykit-wasm` build of paykit-rs, vendored in `pkg/`, so the wallet needs no
 | `walletRail.ts`                 | The rail: pays an approved request by collaborative exit, keeps one record per attempt                      |
 | `receive.ts`                    | Receiving: sent-request records, the boarding-coin seen-cache, and the rail's `verify` of a payer's proof   |
 | `pay.ts`                        | What a request asks this wallet to pay, refusal texts, the send screen's `PaykitSend`                       |
+| `lists.ts`                      | Private payment details: the list this wallet shares, and the endpoint it pays from a contact's list        |
 | `tabLock.ts`                    | One tab runs the engine (Web Lock); another tab waits and takes over                                        |
 | `screens/PubkyIdentity.tsx`     | Settings > Pubky identity                                                                                   |
 | `contacts.ts`                   | Pubky IDs as contacts (`pubky<id>` in the wallet's contacts), connection records                            |
@@ -77,6 +78,21 @@ and stays pending: it is never reported as failed, so it is never paid twice.
    `paykit.seen.v1.<id>` with their first-seen time. A coin the wallet already boarded drops off the boarding list;
    the cache still dates it and proves it when esplora cannot be reached.
 5. A confirmed payment reloads the wallet; the boarding coin shows in the balance and the wallet boards it by itself.
+
+## Private payment details
+
+1. Once a contact is connected, `PaykitSync` sets the wallet's Private Payment List to its boarding address
+   (`setListEndpoints([{identifier: "btc-regtest-p2tr", payload: {"value": <boarding address>}}])`, only when it
+   changed) and shares it with that contact (`publishListTo`). `sharedList()` and `receivedLists()` are read once per
+   engine start, then followed by `sharedListUpdated` and `listReceived`.
+2. The contact's page shows **Private payment details**: whether the wallet's details are shared with the contact,
+   and the contact's own details (the kind of address and the address) once they arrive.
+3. Requesting: the new-request form has **Use private payment details** once the details are shared with the contact.
+   It sends destination `{type: "any"}`; the payer pays the shared list, and `verify` gets no payload and checks the
+   boarding address.
+4. Paying: for a request with destination `any`, `paymentOf` takes the address of the newest usable list the payee
+   shared (`lists.ts`), and the send screen pays it with `payRequest(id, {endpoint, listApp})`. Without a list yet,
+   the request screen says it waits for the contact's details and Approve stays disabled.
 
 ## Configuration (`VITE_PAYKIT_*`)
 

@@ -2,7 +2,8 @@ import { contactDisplayName, readContacts } from '../lib/contacts'
 import { paykitConfig } from './config'
 import { btcToSats, pubkyContactAddress } from './contacts'
 import { prettyLongText } from '../lib/format'
-import type { OneTimeRequest, RequestId } from './protocol'
+import { privateEndpointOf } from './lists'
+import type { OneTimeRequest, ReceivedList, RequestId } from './protocol'
 import { parsePayment } from './walletRail'
 
 /** A request's key in lists and in the page's state: payee and request hash. */
@@ -26,15 +27,42 @@ export interface PaykitSend {
   sats: number
   endpointId: string
   address: string
+  /**
+   * For a request to the payee's private payment details (destination `any`): the payee app whose Private
+   * Payment List holds `address` (`payRequest`'s `listApp`).
+   */
+  listApp?: string
 }
 
+/** Why a request cannot be paid from here; `waitingForDetails`: the payee's private details have not arrived. */
+export type PaymentError = { error: string; waitingForDetails?: boolean }
+
 /**
- * The on-chain address and amount a request asks this wallet to pay, or why it cannot. Requests to any of
- * the payee's shared details (destination `any`) are not paid from here yet.
+ * The on-chain address and amount a request asks this wallet to pay, or why it cannot. A request to the
+ * payee's private payment details (destination `any`) is paid to the address of the newest Private Payment
+ * List the payee shared with this wallet (`lists`).
  */
-export const paymentOf = (request: OneTimeRequest): Omit<PaykitSend, 'name'> | { error: string } => {
-  if (request.destination.type !== 'endpoints') return { error: 'This request asks for shared payment details' }
+export const paymentOf = (
+  request: OneTimeRequest,
+  lists: ReceivedList[] = [],
+): Omit<PaykitSend, 'name'> | PaymentError => {
   const sats = request.amount.asset === 'btc' ? btcToSats(request.amount.value) : undefined
+  if (request.destination.type === 'any') {
+    if (!sats) return { error: 'This request is not in bitcoin' }
+    const endpoint = privateEndpointOf(lists, request.id.payee)
+    if (!endpoint) {
+      return { error: 'The payment details for this request have not arrived yet.', waitingForDetails: true }
+    }
+    return {
+      id: request.id,
+      note: request.paymentReference,
+      sats,
+      endpointId: endpoint.endpointId,
+      address: endpoint.address,
+      listApp: endpoint.listApp,
+    }
+  }
+  if (request.destination.type !== 'endpoints') return { error: 'This wallet cannot pay this kind of request' }
   if (!sats) return { error: 'This request is not in bitcoin' }
   for (const endpoint of request.destination.endpoints) {
     if (!paykitConfig.endpoints.some((item) => item.identifier === endpoint.identifier)) continue
@@ -76,6 +104,8 @@ export const refusalText = (reason: string | undefined, name: string): string =>
       return 'This wallet cannot pay the address in this request.'
     case 'identityUnavailable':
       return 'Your Pubky identity is not available right now. Try again in a moment.'
+    case 'waitingForList':
+      return `${name}'s payment details have not arrived yet. Try again in a moment.`
     default:
       return 'This request cannot be paid right now. Try again in a moment.'
   }

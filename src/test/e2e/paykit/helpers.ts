@@ -101,7 +101,8 @@ export async function shot(page: Page, testInfo: TestInfo, name: string): Promis
   if (!dir) return
   mkdirSync(dir, { recursive: true })
   const project = testInfo.project.name.toLowerCase().replace(/\s+/g, '-')
-  await page.screenshot({ path: join(dir, `${name}-${project}.png`) })
+  // Transitions finish first, so a shot right after a click shows the settled screen.
+  await page.screenshot({ path: join(dir, `${name}-${project}.png`), animations: 'disabled' })
 }
 
 /** Opens the contacts list: the sidebar on desktop, Settings > Contacts on mobile. */
@@ -116,6 +117,47 @@ export async function openContacts(page: Page): Promise<void> {
   await list.or(page.getByTestId('contact-back')).first().waitFor({ state: 'visible' })
   if (!(await list.isVisible())) await page.getByTestId('contact-back').click()
   await list.waitFor({ state: 'visible' })
+}
+
+/** Opens the saved contact whose Pubky ID is `pubkyId` from the contacts list. */
+export async function openContact(page: Page, pubkyId: string): Promise<void> {
+  await openContacts(page)
+  await page
+    .getByTestId('paykit-contact-row')
+    .and(page.locator(`[data-pubky="${pubkyId}"]`))
+    .click()
+  await expect(page.getByTestId('paykit-contact-status')).toBeVisible()
+}
+
+/** Opens the incoming request `hash` from the list on screen (the contacts list or a contact's page). */
+export async function openRequest(page: Page, hash: string): Promise<void> {
+  const row = page.getByTestId('paykit-incoming-row').and(page.locator(`[data-request-hash="${hash}"]`))
+  await expect(row).toBeVisible({ timeout: 30_000 })
+  await row.click()
+  await expect(page.getByTestId('paykit-request')).toHaveAttribute('data-request-hash', hash)
+}
+
+/**
+ * Waits until the send screen offers to sign. Coins that are still boarding cannot leave by exit: the screen
+ * then says the bitcoin is still settling and offers to try again, which this repeats until they settled.
+ * `onSettling` runs once, the first time the screen says so.
+ */
+export async function waitUntilSignable(page: Page, onSettling?: () => Promise<void>): Promise<void> {
+  const button = page.getByTestId('paykit-pay-confirm')
+  const deadline = Date.now() + 150_000
+  let told = false
+  while (Date.now() < deadline) {
+    await expect(button).toHaveText(new RegExp(`^(${tr.send.tapToSign}|Try again)$`), { timeout: 30_000 })
+    if ((await button.textContent())?.trim() === tr.send.tapToSign) return
+    await expect(page.getByText('Your bitcoin is still settling')).toBeVisible()
+    if (!told) {
+      await onSettling?.()
+      told = true
+    }
+    await page.waitForTimeout(5_000)
+    await button.click()
+  }
+  throw new Error('the wallet never settled its coins')
 }
 
 /** The wallet's boarding address (Receive > Other formats > Bitcoin address), which `arkdemo fund` pays. */
@@ -275,6 +317,11 @@ export class PeerRun {
     throw new Error(
       `paykit-peer printed no ${event} ${JSON.stringify(fields)}; events: ${JSON.stringify(this.events.slice(-20))}\n${this.log.slice(-4000)}`,
     )
+  }
+
+  /** Sends one command line to the running peer's stdin (`publish-list <id>`, `request <id> <sats> --any`, ...). */
+  send(line: string): void {
+    this.child.stdin.write(`${line}\n`)
   }
 
   async stop(): Promise<void> {

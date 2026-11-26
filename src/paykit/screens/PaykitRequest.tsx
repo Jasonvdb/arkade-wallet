@@ -15,6 +15,7 @@ import HashIcon from '../../icons/Hash'
 import StatusIcon from '../../icons/Status'
 import TypeIcon from '../../icons/Type'
 import UsersRound from '../../icons/UsersRound'
+import ShieldIcon from '../../icons/ShieldCheckOutline'
 import { prettyDate, prettyLongText } from '../../lib/format'
 import { buildTransactionAmountDisplay } from '../../lib/transactionAmountDisplay'
 import { emptySendInfo, FlowContext } from '../../providers/flow'
@@ -74,7 +75,9 @@ export default function PaykitRequest() {
 
   const name = payeeName(request.id.payee)
   const actionable = isActionable(request)
-  const payment = paymentOf(request)
+  const privateDetails = request.destination.type === 'any'
+  const payment = paymentOf(request, data.receivedLists)
+  const waitingForDetails = 'error' in payment && Boolean(payment.waitingForDetails)
   const attempt = identity ? attemptForRequest(identity, key) : undefined
   const receipt = request.receipt
   const status = requestStatus(request.status, Boolean(receipt))
@@ -112,7 +115,16 @@ export default function PaykitRequest() {
 
   const rows: TableData = [
     ['From', name, <UsersRound key='from' size={16} />],
-    ['Pay to', 'address' in payment ? prettyLongText(payment.address, 12) : undefined, <TypeIcon key='to' />],
+    [
+      'Pay to',
+      'address' in payment
+        ? prettyLongText(payment.address, 12)
+        : waitingForDetails
+          ? `Waiting for ${name}'s details`
+          : undefined,
+      <TypeIcon key='to' />,
+    ],
+    ['Payment details', privateDetails ? `Shared privately by ${name}` : undefined, <ShieldIcon key='details' />],
     ['Status', status.text, <StatusIcon key='status' />],
     ['Transaction ID', attempt?.txid, <HashIcon key='txid' />],
     ['Paid on', attempt?.paidAtMs ? prettyDate(seconds(attempt.paidAtMs)) : undefined, <DateIcon key='paid-on' />],
@@ -132,6 +144,8 @@ export default function PaykitRequest() {
               data-status={request.status}
               data-receipt={receipt ? 'received' : 'none'}
               data-txid={attempt?.txid}
+              data-destination={request.destination.type}
+              data-pay-to={'address' in payment ? payment.address : undefined}
             >
               <span className='contact-avatar' aria-hidden='true'>
                 {initialFor(name)}
@@ -180,6 +194,26 @@ export default function PaykitRequest() {
                     {request.status === 'paid'
                       ? `${name} confirms once the payment shows on-chain.`
                       : 'The payment joins the next batch round.'}
+                  </small>
+                </span>
+              </div>
+            ) : actionable && privateDetails ? (
+              <div
+                className={`paykit-receipt${waitingForDetails ? ' paykit-receipt--waiting' : ' paykit-receipt--private'}`}
+                data-testid='paykit-request-private'
+                data-state={waitingForDetails ? 'waiting' : 'ready'}
+              >
+                <span className='paykit-receipt__icon' aria-hidden='true'>
+                  {waitingForDetails ? <span className='paykit-spinner' /> : <ShieldIcon />}
+                </span>
+                <span className='paykit-receipt__copy'>
+                  <strong>
+                    {waitingForDetails ? `Waiting for ${name}'s payment details` : `Pays ${name}'s private details`}
+                  </strong>
+                  <small>
+                    {waitingForDetails
+                      ? `${name} asked to be paid to the details they share privately. They arrive in a moment.`
+                      : `${name} shared this address with you privately. It is not in the request itself.`}
                   </small>
                 </span>
               </div>

@@ -8,8 +8,11 @@ import {
   type EngineOp,
   type OneTimeRequest,
   type PayeeRequest,
+  type ReceivedList,
+  type SharedList,
 } from './protocol'
 import { lastCheckOf, readSent, rememberSent } from './receive'
+import { listEndpointsFor, sameListEndpoints } from './lists'
 
 type Call = <O extends EngineOp>(op: O, args: EngineCalls[O]['args']) => Promise<EngineCalls[O]['result']>
 
@@ -27,6 +30,12 @@ export interface PaykitSnapshot {
   activityLoaded: boolean
   /** Per activity record: where the check of a payer's proof stands. */
   checks: Record<string, ProofCheck>
+  /** The Private Payment List this wallet shares, and with whom; `null` until it was read. */
+  sharedList: SharedList | null
+  /** The Private Payment Lists contacts shared with this wallet, the latest per contact app. */
+  receivedLists: ReceivedList[]
+  /** Both lists have been read from the engine at least once since it started. */
+  listsLoaded: boolean
 }
 
 /**
@@ -50,7 +59,13 @@ const EMPTY: PaykitSnapshot = {
   activity: [],
   activityLoaded: false,
   checks: {},
+  sharedList: null,
+  receivedLists: [],
+  listsLoaded: false,
 }
+
+/** How long to wait before sharing the details with a contact again after the engine refused or failed. */
+const SHARE_RETRY_MS = 15_000
 
 /** How soon a proof is checked again: soon while the payment is not found, rarely once it is known short. */
 const RECHECK_MS = { checking: 5_000, short: 60_000, refused: 60_000 } as const
@@ -59,6 +74,7 @@ const RECHECK_MS = { checking: 5_000, short: 60_000, refused: 60_000 } as const
 const TICK_MS = 3_000
 
 const requestKey = (request: OneTimeRequest) => `${request.id.payee}/${request.id.requestHash}`
+const listKey = (list: ReceivedList) => `${list.payee}/${list.appId}`
 
 /**
  * Keeps the wallet's Pubky contacts and the engine in step while the engine runs, and holds what the page
@@ -69,7 +85,10 @@ const requestKey = (request: OneTimeRequest) => `${request.id.payee}/${request.i
  * - for each contact not known to admit this wallet, one admission probe (`probeAdmission`) is kept, and its
  *   delivery is read every few seconds (`messageDelivery`). `accepted`, or any message from the contact,
  *   marks it connected, which is remembered;
- * - the incoming Payment Requests are read once (`requests`) and then followed by their events.
+ * - the incoming Payment Requests are read once (`requests`) and then followed by their events;
+ * - the wallet's private payment details (its Private Payment List: the boarding address as
+ *   `btc-regtest-p2tr`) are set once the wallet's address is known, and shared with each contact once it is
+ *   connected (`publishListTo`). The lists contacts share back are read once and followed by `listReceived`.
  *
  * The engine's own feed loop receives, sends and runs the signer meanwhile; this adds no loop of its own
  * beyond the probe reads.
@@ -85,12 +104,19 @@ export class PaykitSync {
   /** Records whose proof is being checked now, and when each may be checked again. */
   private confirming = new Set<string>()
   private nextCheck = new Map<string, number>()
+  /** When sharing the details with a contact may be tried again, after a refusal or a failure. */
+  private nextShare = new Map<string, number>()
   private unsubscribe: () => void
 
+  /**
+   * `listAddress` gives the address the wallet shares privately (its boarding address), or `undefined` while
+   * the wallet is not unlocked.
+   */
   constructor(
     private readonly ownId: string,
     private readonly call: Call,
     subscribe: (listener: (event: EngineEvent) => void) => () => void,
+    private readonly listAddress: () => Promise<string | undefined>,
   ) {
     this.records = readConnections(ownId)
     this.unsubscribe = subscribe((event) => this.onEvent(event))
@@ -162,6 +188,8 @@ export class PaykitSync {
       this.publish({ connections: this.connectionsOf(ids) })
       if (!this.snapshot.requestsLoaded) await this.loadRequests()
       if (!this.snapshot.activityLoaded) await this.loadActivity()
+      if (!this.snapshot.listsLoaded) await this.loadLists()
+      await this.shareDetails(ids)
       this.confirmDue()
     } finally {
       this.ticking = false
@@ -214,6 +242,74 @@ export class PaykitSync {
     } catch {
       // Read again at the next tick.
     }
+  }
+
+  private async loadLists() {
+    try {
+      const [sharedList, receivedLists] = await Promise.all([
+        this.call('sharedList', undefined),
+        this.call('receivedLists', undefined),
+      ])
+      // Lists told by events while the reads ran are newer than what the reads gave.
+      const known = new Set(this.snapshot.receivedLists.map(listKey))
+      this.publish({
+        sharedList: this.snapshot.sharedList ?? sharedList,
+        receivedLists: [...this.snapshot.receivedLists, ...receivedLists.filter((list) => !known.has(listKey(list)))],
+        listsLoaded: true,
+      })
+    } catch {
+      // Read again at the next tick.
+    }
+  }
+
+  /**
+   * Keeps the wallet's private payment details current and shared with every connected contact. The details
+   * are the boarding address, which stays the same while the Executor is off (the demo runs it off); if it
+   * ever changes, the new list goes to everyone it was shared with (the engine sends each change).
+   *
+   * For auditing: the list travels end-to-end encrypted to the contact's inbox only (pubky-noise inside the
+   * engine); nothing of it is published on the Homeserver. A contact receives it only once both sides admit
+   * each other.
+   */
+  private async shareDetails(ids: string[]) {
+    if (this.stopped || !this.snapshot.listsLoaded) return
+    const connected = ids.filter((id) => this.records[id]?.connectedAtMs)
+    if (!connected.length) return
+    try {
+      const address = await this.listAddress()
+      if (!address) return
+      const endpoints = listEndpointsFor(address)
+      if (!sameListEndpoints(this.snapshot.sharedList?.endpoints ?? null, endpoints)) {
+        await this.call('setListEndpoints', endpoints)
+        this.publish({ sharedList: await this.call('sharedList', undefined) })
+      }
+    } catch (error) {
+      consoleError(error, 'Paykit could not set the private payment details')
+      return
+    }
+    const now = Date.now()
+    for (const id of connected) {
+      if (this.stopped) return
+      if (this.snapshot.sharedList?.recipients.includes(id)) continue
+      if ((this.nextShare.get(id) ?? 0) > now) continue
+      try {
+        await this.call('publishListTo', id)
+        this.nextShare.delete(id)
+        this.publish({ sharedList: await this.call('sharedList', undefined) })
+      } catch (error) {
+        // `notNow`: an earlier publication to this contact is still unresolved; the engine sends it later.
+        if (!(error instanceof PaykitCallError && error.reason === 'notNow')) {
+          consoleError(error, 'Paykit could not share the private payment details')
+        }
+        this.nextShare.set(id, now + SHARE_RETRY_MS)
+      }
+    }
+  }
+
+  private upsertList(list: ReceivedList) {
+    const key = listKey(list)
+    const rest = this.snapshot.receivedLists.filter((item) => listKey(item) !== key)
+    this.publish({ receivedLists: [list, ...rest] })
   }
 
   private upsertActivity(activity: PayeeRequest) {
@@ -313,7 +409,14 @@ export class PaykitSync {
         // A restarted engine tells nothing it held at start: read the state again.
         this.allowed = new Set()
         this.nextCheck.clear()
-        this.publish({ requestsLoaded: false, activityLoaded: false })
+        this.nextShare.clear()
+        this.publish({
+          requestsLoaded: false,
+          activityLoaded: false,
+          listsLoaded: false,
+          sharedList: null,
+          receivedLists: [],
+        })
         void this.tick()
         return
       case 'messageReceived':
@@ -328,6 +431,12 @@ export class PaykitSync {
       case 'proofReceived':
       case 'activityUpdated':
         this.upsertActivity(event.activity)
+        return
+      case 'listReceived':
+        this.upsertList(event.list)
+        return
+      case 'sharedListUpdated':
+        this.publish({ sharedList: event.list })
         return
     }
   }
