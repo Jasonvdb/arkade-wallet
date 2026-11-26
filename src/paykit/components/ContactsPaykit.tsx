@@ -7,7 +7,9 @@ import { contactDisplayName, readContacts, type Contact } from '../../lib/contac
 import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
 import { requestKeyOf, shortPubky } from '../pay'
 import { PaykitContext } from '../provider'
-import type { OneTimeRequest } from '../protocol'
+import type { OneTimeRequest, PayeeRequest } from '../protocol'
+import { readSent, type SentRecord } from '../receive'
+import type { ProofCheck } from '../sync'
 import './Paykit.css'
 
 export { shortPubky }
@@ -30,6 +32,31 @@ const REQUEST_STATUS: Record<string, { text: string; tone: string }> = {
 export const requestStatus = (status: string, receipt: boolean): { text: string; tone: string } => {
   if (status === 'paid' && !receipt) return { text: 'Waiting for receipt', tone: 'pending' }
   return REQUEST_STATUS[status] ?? { text: 'Pending', tone: 'pending' }
+}
+
+/**
+ * Where a request this wallet sent stands, in words: waiting for the payment, checking it on-chain, received
+ * (receipt sent), or not confirmed because it pays too little.
+ */
+export const sentStatus = (status: string, check: ProofCheck | undefined): { text: string; tone: string } => {
+  switch (status) {
+    case 'requested':
+    case 'accepted':
+      return { text: 'Waiting for payment', tone: 'open' }
+    case 'proofReceived':
+      if (check?.state === 'short') return { text: 'Paid too little', tone: 'warning' }
+      if (check?.state === 'refused') return { text: 'Not confirmed', tone: 'warning' }
+      if (check?.state === 'confirmed') return { text: 'Received', tone: 'paid' }
+      return { text: 'Checking payment', tone: 'pending' }
+    case 'receipted':
+      return { text: 'Received', tone: 'paid' }
+    case 'rejected':
+      return { text: 'Declined', tone: 'rejected' }
+    case 'cancelled':
+      return { text: 'Cancelled', tone: 'cancelled' }
+    default:
+      return { text: 'Pending', tone: 'pending' }
+  }
 }
 
 /** Whether a Pubky contact has added this wallet back: a dot and words, or a pill on the contact's card. */
@@ -64,10 +91,18 @@ export function ConnectionStatus({
 const contactFor = (contacts: Contact[], pubkyId: string) =>
   contacts.find((contact) => contact.address === pubkyContactAddress(pubkyId))
 
-function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: Contact[] }) {
+function RequestRow({
+  request,
+  contacts,
+  fromContactPage,
+}: {
+  request: OneTimeRequest
+  contacts: Contact[]
+  fromContactPage: boolean
+}) {
   const { config } = useContext(ConfigContext)
   const { navigate } = useContext(NavigationContext)
-  const { focusRequest } = useContext(PaykitContext)
+  const { focusRequest, setReturnContact } = useContext(PaykitContext)
   const contact = contactFor(contacts, request.id.payee)
   const name = contact ? contactDisplayName(contact) : shortPubky(request.id.payee)
   const sats = request.amount.asset === 'btc' ? btcToSats(request.amount.value) : undefined
@@ -76,6 +111,7 @@ function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: 
   const status = requestStatus(request.status, Boolean(request.receipt))
   const open = () => {
     focusRequest(request.id)
+    setReturnContact(fromContactPage ? contact?.address : undefined)
     navigate(Pages.PaykitRequest)
   }
   return (
@@ -118,7 +154,15 @@ function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: 
  * stands. With `payee`, only that contact's. Shown once Paykit runs; nothing at all when there is none and
  * `emptyText` is not given.
  */
-export function IncomingRequests({ payee, emptyText }: { payee?: string; emptyText?: string }) {
+export function IncomingRequests({
+  payee,
+  emptyText,
+  label = 'Payment requests',
+}: {
+  payee?: string
+  emptyText?: string
+  label?: string
+}) {
   const { status, data } = useContext(PaykitContext)
   if (status !== 'ready' && status !== 'restarting') return null
   const requests = data.requests.filter((request) => !payee || request.id.payee === payee)
@@ -126,11 +170,16 @@ export function IncomingRequests({ payee, emptyText }: { payee?: string; emptyTe
   const contacts = readContacts()
   return (
     <section className='settings-section paykit-requests' data-testid='paykit-incoming'>
-      <p className='settings-section-label'>Payment requests</p>
+      <p className='settings-section-label'>{label}</p>
       {requests.length ? (
         <div className='contact-list settings-row-group'>
           {requests.map((request) => (
-            <RequestRow key={requestKeyOf(request.id)} request={request} contacts={contacts} />
+            <RequestRow
+              key={requestKeyOf(request.id)}
+              request={request}
+              contacts={contacts}
+              fromContactPage={Boolean(payee)}
+            />
           ))}
         </div>
       ) : (
@@ -138,6 +187,95 @@ export function IncomingRequests({ payee, emptyText }: { payee?: string; emptyTe
           {data.requestsLoaded ? emptyText : 'Loading payment requests…'}
         </p>
       )}
+    </section>
+  )
+}
+
+/** A sent request's activity record with what this wallet remembers of it, for lists. */
+interface SentItem {
+  activity: PayeeRequest
+  sent?: SentRecord
+}
+
+function SentRow({
+  item,
+  contacts,
+  fromContactPage,
+}: {
+  item: SentItem
+  contacts: Contact[]
+  fromContactPage: boolean
+}) {
+  const { config } = useContext(ConfigContext)
+  const { navigate } = useContext(NavigationContext)
+  const { focusSent, setReturnContact, data } = useContext(PaykitContext)
+  const { activity, sent } = item
+  const contact = contactFor(contacts, activity.payer)
+  const name = contact ? contactDisplayName(contact) : shortPubky(activity.payer)
+  const sats = activity.amount?.asset === 'btc' ? btcToSats(activity.amount.value) : sent?.sats
+  const amount = sats !== undefined ? prettyBitcoinAmount(sats, config.unit) : (activity.amount?.value ?? '')
+  const check = data.checks[activity.record]
+  const status = sentStatus(activity.status, check)
+  const open = () => {
+    focusSent(activity.requestHash ?? undefined)
+    setReturnContact(fromContactPage ? contact?.address : undefined)
+    navigate(Pages.PaykitSentRequest)
+  }
+  return (
+    <button
+      type='button'
+      className='settings-row contact-list-item paykit-request'
+      aria-label={`Payment request to ${name}`}
+      onClick={open}
+      data-testid='paykit-activity-row'
+      data-request-hash={activity.requestHash ?? undefined}
+      data-payer={activity.payer}
+      data-status={activity.status}
+      data-check={check?.state ?? 'none'}
+      data-sats={sats}
+    >
+      <span className='settings-row__main'>
+        <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
+          {initialFor(name)}
+        </span>
+        <span className='contact-list-item-copy'>
+          <strong>{name}</strong>
+          <small>{sent?.note ?? 'Payment request'}</small>
+        </span>
+      </span>
+      <span className='paykit-request__amount'>
+        <strong>{amount}</strong>
+        <span className={`paykit-request__status paykit-request__status--${status.tone}`}>{status.text}</span>
+      </span>
+      <span className='settings-row__chevron' aria-hidden='true'>
+        <ArrowIcon />
+      </span>
+    </button>
+  )
+}
+
+/**
+ * The Payment Requests this wallet sent to contacts, newest first: who pays, the note, the amount and where
+ * it stands. With `payer`, only that contact's. Nothing at all when there is none.
+ */
+export function SentRequests({ payer, label = 'Requests you sent' }: { payer?: string; label?: string }) {
+  const { status, data, identity } = useContext(PaykitContext)
+  if ((status !== 'ready' && status !== 'restarting') || !identity) return null
+  const remembered = readSent(identity)
+  const items: SentItem[] = data.activity
+    .filter((activity) => activity.requestHash && (!payer || activity.payer === payer))
+    .map((activity) => ({ activity, sent: remembered[activity.requestHash as string] }))
+    .sort((a, b) => (b.sent?.createdAtMs ?? 0) - (a.sent?.createdAtMs ?? 0))
+  if (!items.length) return null
+  const contacts = readContacts()
+  return (
+    <section className='settings-section paykit-requests' data-testid='paykit-sent'>
+      <p className='settings-section-label'>{label}</p>
+      <div className='contact-list settings-row-group'>
+        {items.map((item) => (
+          <SentRow key={item.activity.record} item={item} contacts={contacts} fromContactPage={Boolean(payer)} />
+        ))}
+      </div>
     </section>
   )
 }

@@ -4,7 +4,15 @@ import { existsSync, mkdirSync, rmSync } from 'fs'
 import { join, resolve } from 'path'
 import { mnemonicToSeedSync } from '@scure/bip39'
 import type { Page, TestInfo } from '@playwright/test'
-import { isDesktop, navigateHome, navigateToSettings, pickReceiveFormat, readClipboard } from '../utils'
+import {
+  createWallet,
+  expect,
+  isDesktop,
+  navigateHome,
+  navigateToSettings,
+  pickReceiveFormat,
+  readClipboard,
+} from '../utils'
 import { translations } from '../../../lib/i18n'
 
 const tr = translations.en
@@ -96,14 +104,18 @@ export async function shot(page: Page, testInfo: TestInfo, name: string): Promis
   await page.screenshot({ path: join(dir, `${name}-${project}.png`) })
 }
 
-/** Opens the contacts screen: the sidebar on desktop, Settings > Contacts on mobile. */
+/** Opens the contacts list: the sidebar on desktop, Settings > Contacts on mobile. */
 export async function openContacts(page: Page): Promise<void> {
   if (isDesktop(page)) await page.getByTestId('desktop-nav-contacts').click()
   else {
     await navigateToSettings(page)
     await page.getByRole('button', { name: tr.contacts.title, exact: true }).click()
   }
-  await page.getByTestId('contacts-new').waitFor({ state: 'visible' })
+  // Back from a Paykit screen, the contacts screen shows that contact's page: go to the list.
+  const list = page.getByTestId('contacts-new')
+  await list.or(page.getByTestId('contact-back')).first().waitFor({ state: 'visible' })
+  if (!(await list.isVisible())) await page.getByTestId('contact-back').click()
+  await list.waitFor({ state: 'visible' })
 }
 
 /** The wallet's boarding address (Receive > Other formats > Bitcoin address), which `arkdemo fund` pays. */
@@ -131,6 +143,33 @@ export async function addPubkyContact(page: Page, name: string, peerId: string):
   await page.getByTestId('contact-address').fill(`pubky${peerId}`)
   await page.getByTestId('contact-save').click()
   await page.getByTestId('contact-save').waitFor({ state: 'hidden' })
+}
+
+/** A new wallet with Paykit ready, which `peer` allows to send it requests. Returns the wallet's Pubky ID. */
+export async function connectedWallet(page: Page, peer: Peer): Promise<string> {
+  await createWallet(page)
+  const walletId = pubkyIdOfMnemonic(await readRecoveryPhrase(page))
+  await openPubkyIdentity(page)
+  await expect(page.getByTestId('paykit-status')).toHaveAttribute('data-status', 'ready', { timeout: 60_000 })
+  peer.must('allow', 'allowed', walletId)
+  return walletId
+}
+
+/** Saves `peer` as the contact `name` and waits until it is connected both ways (left on the contact's page). */
+export async function addAndConnect(page: Page, peer: Peer, name: string): Promise<void> {
+  await openContacts(page)
+  await addPubkyContact(page, name, peer.id)
+  await expect(page.getByTestId('paykit-contact-status')).toHaveAttribute('data-connection', 'connected', {
+    timeout: 30_000,
+  })
+}
+
+/** The whole sats of the wallet's main balance as shown on the home screen (sats or BTC display). */
+export async function mainBalanceSats(page: Page): Promise<number> {
+  await navigateHome(page)
+  const text = ((await page.getByTestId('main-balance').first().textContent()) ?? '').replace(/[,\s]/g, '')
+  const number = /[\d.]+/.exec(text)?.[0] ?? '0'
+  return number.includes('.') ? Math.round(Number(number) * 100_000_000) : Number(number)
 }
 
 /** The sum of a transaction's outputs to `address`, in sats, from the local esplora. */

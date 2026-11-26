@@ -28,8 +28,9 @@ export default function DesktopWalletShell({ logoVisible, page }: DesktopWalletS
 
   const activityActive = page === Pages.Activity || page === Pages.Transaction
   const settingsActive = page === Pages.Settings || page === Pages.Vtxos
-  // A contact's Payment Request (Paykit) belongs to Contacts.
-  const paykitRequest = page === Pages.PaykitRequest
+  // A contact's Payment Requests (Paykit) belong to Contacts.
+  const paykitRequest =
+    page === Pages.PaykitRequest || page === Pages.PaykitNewRequest || page === Pages.PaykitSentRequest
   const homeActive = !activityActive && !settingsActive && !paykitRequest
 
   const goHome = () => {

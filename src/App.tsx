@@ -40,6 +40,8 @@ const DESKTOP_WALLET_PAGES = new Set([
   Pages.NotesForm,
   Pages.NotesSuccess,
   Pages.PaykitRequest,
+  Pages.PaykitNewRequest,
+  Pages.PaykitSentRequest,
   Pages.ReceiveQRCode,
   Pages.ReceiveSuccess,
   Pages.SendForm,

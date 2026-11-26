@@ -1,14 +1,12 @@
 import type { Page, TestInfo } from '@playwright/test'
-import { test, expect, createWallet } from '../utils'
+import { test, expect } from '../utils'
 import {
   Peer,
-  addPubkyContact,
+  addAndConnect,
   arkdemo,
   boardingAddress,
+  connectedWallet,
   openContacts,
-  openPubkyIdentity,
-  pubkyIdOfMnemonic,
-  readRecoveryPhrase,
   satsPaidTo,
   shot,
 } from './helpers'
@@ -16,24 +14,6 @@ import { translations } from '../../../lib/i18n'
 
 const tr = translations.en
 const projectSlug = (name: string) => name.toLowerCase().replace(/\s+/g, '-')
-
-/** A wallet with Paykit ready and the peer saved as `name`, connected both ways. */
-async function connectedWallet(page: Page, peer: Peer): Promise<string> {
-  await createWallet(page)
-  const walletId = pubkyIdOfMnemonic(await readRecoveryPhrase(page))
-  await openPubkyIdentity(page)
-  await expect(page.getByTestId('paykit-status')).toHaveAttribute('data-status', 'ready', { timeout: 60_000 })
-  peer.must('allow', 'allowed', walletId)
-  return walletId
-}
-
-async function addAndConnect(page: Page, peer: Peer, name: string) {
-  await openContacts(page)
-  await addPubkyContact(page, name, peer.id)
-  await expect(page.getByTestId('paykit-contact-status')).toHaveAttribute('data-connection', 'connected', {
-    timeout: 30_000,
-  })
-}
 
 /** Opens the request `hash` from the contact's page. */
 async function openRequest(page: Page, hash: string) {
