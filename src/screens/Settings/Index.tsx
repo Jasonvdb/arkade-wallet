@@ -25,6 +25,7 @@ import Solvers from './Solvers'
 import LanguageSettings from './Language'
 import Lnurl from './Lnurl'
 import Contacts from './Contacts'
+import PubkyIdentity from '../../paykit/screens/PubkyIdentity'
 
 function settingsContent(option: SettingsOptions): JSX.Element {
   switch (option) {
@@ -62,6 +63,8 @@ function settingsContent(option: SettingsOptions): JSX.Element {
       return <Notifications />
     case SettingsOptions.Password:
       return <Password />
+    case SettingsOptions.PubkyIdentity:
+      return <PubkyIdentity />
     case SettingsOptions.Reset:
       return <Reset />
     case SettingsOptions.Server:

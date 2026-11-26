@@ -1,5 +1,6 @@
 import { LivelinePoint } from 'liveline'
 import { Currencies } from './types'
+import { isLocalOnly } from './localOnly'
 
 const host = 'https://price-chart-proxy.arkade.money'
 
@@ -46,6 +47,7 @@ export const fetchHistoricalMarketData = async (
   fiat: Currencies,
   signal?: AbortSignal,
 ): Promise<LivelinePoint[]> => {
+  if (isLocalOnly()) throw new Error('Market data is not fetched on a local-only run')
   const period = secsToPeriod(secs)
   const params = new URLSearchParams({ period, fiat })
   const resp = await fetch(`${host}?${params.toString()}`, { signal })

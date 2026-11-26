@@ -20,6 +20,8 @@ import SolverIcon from '@/icons/Solver'
 import GlobeOutlineIcon from '@/icons/GlobeOutline'
 import BoltOutlineIcon from '@/icons/BoltOutline'
 import UsersRound from '../icons/UsersRound'
+import PubkyIcon from '../paykit/PubkyIcon'
+import { paykitConfig } from '../paykit/config'
 
 export interface Option {
   icon: ReactElement
@@ -33,6 +35,10 @@ export const options: Option[] = [
     option: SettingsOptions.Contacts,
     section: SettingsSections.General,
   },
+  // Paykit runs only where it is enabled (a local regtest run by default).
+  ...(paykitConfig.enabled
+    ? [{ icon: <PubkyIcon />, option: SettingsOptions.PubkyIdentity, section: SettingsSections.General }]
+    : []),
   {
     icon: <CoinsIcon />,
     option: SettingsOptions.ArkadeMint,

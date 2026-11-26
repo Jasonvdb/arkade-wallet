@@ -79,6 +79,7 @@ export enum SettingsOptions {
   Notifications = 'notifications',
   Notes = 'notes',
   Password = 'change password',
+  PubkyIdentity = 'pubky identity',
   Reset = 'reset wallet',
   Server = 'server',
   Solvers = 'solvers',

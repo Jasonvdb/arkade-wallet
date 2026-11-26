@@ -26,7 +26,7 @@ export const FiatContext = createContext<FiatContextProps>({
 })
 
 export const FiatProvider = ({ children }: { children: ReactNode }) => {
-  const { config, updateConfig } = useContext(ConfigContext)
+  const { config, configLoaded, updateConfig } = useContext(ConfigContext)
 
   const [loading, setLoading] = useState(false)
 
@@ -84,9 +84,10 @@ export const FiatProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false)
   }
 
+  // After the stored config loads: the BTC fallback writes the whole config, and must not write the defaults.
   useEffect(() => {
-    updateFiatPrices()
-  }, [])
+    if (configLoaded) updateFiatPrices()
+  }, [configLoaded])
 
   return (
     <FiatContext.Provider value={{ fromFiat, fromFiatAmount, toFiat, toFiatAmount, fiatDecimals, updateFiatPrices }}>

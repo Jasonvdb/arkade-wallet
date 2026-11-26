@@ -52,6 +52,7 @@ import { lnurlResyncOnPayment, syncLnurlActivity } from '../lib/lnurlActivitySyn
 import { assetSwapRepository, type WalletAssetSwap } from '../lib/swapRepository'
 import { nsecToPrivateKey, getPrivateKey, noUserDefinedPassword } from '../lib/privateKey'
 import { hasMnemonic, getMnemonic, deriveNostrKeyFromMnemonic } from '../lib/mnemonic'
+import { clearPaykitSecret, setPaykitMnemonic, setPaykitUnsupported } from '../paykit/secret'
 import { resolveWalletMode } from '../lib/walletMode'
 import { calcBatchLifetimeMs, calcNextRollover } from '../lib/wallet'
 import { setLoadingStatus } from '../lib/loadingStatus'
@@ -1159,11 +1160,14 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         persisted: config.walletMode,
       })
       initialiseNostrBackup(deriveNostrKeyFromMnemonic(credentials.mnemonic, isMainnet(network)))
+      // The Pubky identity for Paykit comes from the same phrase; it stays in memory only.
+      setPaykitMnemonic(credentials.mnemonic).catch((err) => consoleError(err, 'Paykit identity derivation failed'))
       updateConfig({ ...config, pubkey, walletMode })
     } else if (credentials.privateKey) {
       identity = SingleKey.fromPrivateKey(credentials.privateKey)
       pubkey = hex.encode(secp256k1.getPublicKey(credentials.privateKey))
       walletMode = 'static'
+      setPaykitUnsupported()
       initialiseNostrBackup(credentials.privateKey)
       updateConfig({ ...config, pubkey, walletMode })
     } else {
@@ -1250,6 +1254,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const lockWallet = async () => {
     abortInitSession()
+    clearPaykitSecret()
     if (!svcWallet) throw new Error('Service worker not initialized')
     if (statusPingInterval.current) clearInterval(statusPingInterval.current)
     statusPingInterval.current = undefined
@@ -1271,6 +1276,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const resetWallet = async () => {
     // Aborting the session stops the LNURL history sync writing, so the purge below has nothing racing it.
     abortInitSession()
+    clearPaykitSecret()
     lnurlResyncRef.current?.cancel()
     if (!svcWallet) throw new Error('Service worker not initialized')
     // Before anything destructive, and fatal: these records hold preimages, so a

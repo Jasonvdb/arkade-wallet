@@ -57,6 +57,9 @@ importers:
       '@sentry/react':
         specifier: ^9.15.0
         version: 9.46.0(react@18.3.1)
+      '@synonymdev/pubky':
+        specifier: 0.18.0
+        version: 0.18.0
       '@tanstack/react-virtual':
         specifier: ^3.13.19
         version: 3.13.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1063,6 +1066,9 @@ packages:
     peerDependencies:
       react: ^16.14.0 || 17.x || 18.x || 19.x
 
+  '@synonymdev/pubky@0.18.0':
+    resolution: {integrity: sha512-loOKKjSYgxFfSWekjWFpCMqKwkFwmiL86ppC6XXG53rG+xPx/zIZdHjscWUCLpg4wAINpb1I0OtIUDP8kkuNaA==}
+
   '@tailwindcss/node@4.2.4':
     resolution: {integrity: sha512-Ai7+yQPxz3ddrDQzFfBKdHEVBg0w3Zl83jnjuwxnZOsnH9pGn93QHQtpU0p/8rYWxvbFZHneni6p1BSLK4DkGA==}
 
@@ -1896,6 +1902,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fetch-cookie@3.2.0:
+    resolution: {integrity: sha512-n61pQIxP25C6DRhcJxn7BDzgHP/+S56Urowb5WFxtcRMpU6drqXD90xjyAsVQYsNSNNVbaCcYY1DuHsdkZLuiA==}
 
   file-entry-cache@6.0.1:
     resolution: {integrity: sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==}
@@ -2785,6 +2794,9 @@ packages:
     resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
     engines: {node: '>=10'}
     hasBin: true
+
+  set-cookie-parser@2.7.3:
+    resolution: {integrity: sha512-irZHtTqurLna57KQG/s+fzOwv/J6XSH4cs8M/vsrY3uCaQ3S6+QJguAH0WdN47SXlk82voMZ4naWMQf8fdEoIg==}
 
   set-cookie-parser@3.2.1:
     resolution: {integrity: sha512-Npd1Pt+4zb3BrSZDPd2qFwRpS6b1EUEasRrO8xS0zMJi0fApXXK5YuzP0minyJnxwnFHoVoJwA55q0A0cu63gQ==}
@@ -4036,6 +4048,10 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       react: 18.3.1
 
+  '@synonymdev/pubky@0.18.0':
+    dependencies:
+      fetch-cookie: 3.2.0
+
   '@tailwindcss/node@4.2.4':
     dependencies:
       '@jridgewell/remapping': 2.3.5
@@ -5054,6 +5070,11 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fetch-cookie@3.2.0:
+    dependencies:
+      set-cookie-parser: 2.7.3
+      tough-cookie: 6.0.2
+
   file-entry-cache@6.0.1:
     dependencies:
       flat-cache: 3.2.0
@@ -5976,6 +5997,8 @@ snapshots:
 
   semver@7.7.3: {}
 
+  set-cookie-parser@2.7.3: {}
+
   set-cookie-parser@3.2.1:
     optional: true
 
@@ -6165,8 +6188,7 @@ snapshots:
 
   tldts-core@6.1.86: {}
 
-  tldts-core@7.4.19:
-    optional: true
+  tldts-core@7.4.19: {}
 
   tldts@6.1.86:
     dependencies:
@@ -6175,7 +6197,6 @@ snapshots:
   tldts@7.4.19:
     dependencies:
       tldts-core: 7.4.19
-    optional: true
 
   to-regex-range@5.0.1:
     dependencies:
@@ -6188,7 +6209,6 @@ snapshots:
   tough-cookie@6.0.2:
     dependencies:
       tldts: 7.4.19
-    optional: true
 
   tr46@5.1.1:
     dependencies:

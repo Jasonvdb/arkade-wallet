@@ -613,6 +613,7 @@ export const translations = {
       passwordRemoved: 'Password removed',
       portuguese: 'Portuguese',
       preferences: 'Preferences',
+      pubkyIdentity: 'Pubky identity',
       receive: 'Receive',
       receiveViaTokens: 'Accept tokens',
       receiveViaTokensSubtext:
@@ -1582,6 +1583,7 @@ export const translations = {
       passwordRemoved: 'Contraseña eliminada',
       portuguese: 'Portugués',
       preferences: 'Preferencias',
+      pubkyIdentity: 'Identidad Pubky',
       receive: 'Recibir',
       receiveViaTokens: 'Aceptar tokens',
       receiveViaTokensSubtext:
@@ -2556,6 +2558,7 @@ export const translations = {
       passwordRemoved: 'Senha removida',
       portuguese: 'Português',
       preferences: 'Preferências',
+      pubkyIdentity: 'Identidade Pubky',
       receive: 'Receber',
       receiveViaTokens: 'Receber via tokens',
       receiveViaTokensSubtext: 'Receba pagamentos usando tokens específicos.',

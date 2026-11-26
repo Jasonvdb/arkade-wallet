@@ -17,6 +17,7 @@ import * as Sentry from '@sentry/react'
 import { SwapsProvider } from './providers/swaps'
 import { beforeSend, scrubBreadcrumb, shouldInitializeSentry } from './lib/sentry'
 import { FeesProvider } from './providers/fees'
+import { PaykitProvider } from './paykit/provider'
 import { AnnouncementProvider } from './providers/announcements'
 import { ToastProvider } from './components/Toast'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -62,17 +63,19 @@ root.render(
                         <SwapsProvider>
                           <LimitsProvider>
                             <FeesProvider>
-                              <OptionsProvider>
-                                <NudgeProvider>
-                                  <AnnouncementProvider>
-                                    <ToastProvider>
-                                      <ErrorBoundary>
-                                        <App />
-                                      </ErrorBoundary>
-                                    </ToastProvider>
-                                  </AnnouncementProvider>
-                                </NudgeProvider>
-                              </OptionsProvider>
+                              <PaykitProvider>
+                                <OptionsProvider>
+                                  <NudgeProvider>
+                                    <AnnouncementProvider>
+                                      <ToastProvider>
+                                        <ErrorBoundary>
+                                          <App />
+                                        </ErrorBoundary>
+                                      </ToastProvider>
+                                    </AnnouncementProvider>
+                                  </NudgeProvider>
+                                </OptionsProvider>
+                              </PaykitProvider>
                             </FeesProvider>
                           </LimitsProvider>
                         </SwapsProvider>

@@ -24,10 +24,11 @@ export default defineConfig({
     }),
     process.env.HTTPS === 'true' && basicSsl(),
   ].filter(Boolean),
+  // Loopback only: open the app as http://localhost:3002 (that host name selects the local regtest server).
   server: {
     port: 3002,
-    host: true,
-    allowedHosts: ['.trycloudflare.com'],
+    host: '127.0.0.1',
+    strictPort: true,
   },
   build: {
     emptyOutDir: true,
