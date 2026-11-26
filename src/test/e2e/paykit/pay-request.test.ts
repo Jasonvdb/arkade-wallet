@@ -1,4 +1,3 @@
-import type { Page, TestInfo } from '@playwright/test'
 import { test, expect } from '../utils'
 import {
   Peer,
@@ -7,43 +6,15 @@ import {
   boardingAddress,
   connectedWallet,
   openContacts,
+  openRequest,
   satsPaidTo,
   shot,
+  waitUntilSignable,
 } from './helpers'
 import { translations } from '../../../lib/i18n'
 
 const tr = translations.en
 const projectSlug = (name: string) => name.toLowerCase().replace(/\s+/g, '-')
-
-/** Opens the request `hash` from the contact's page. */
-async function openRequest(page: Page, hash: string) {
-  const row = page.getByTestId('paykit-incoming-row').and(page.locator(`[data-request-hash="${hash}"]`))
-  await expect(row).toBeVisible({ timeout: 30_000 })
-  await row.click()
-  await expect(page.getByTestId('paykit-request')).toHaveAttribute('data-request-hash', hash)
-}
-
-/**
- * Waits until the send screen offers to sign. Coins that are still boarding cannot leave by exit: the screen
- * then says the bitcoin is still settling and offers to try again, which this repeats until they settled.
- */
-async function waitUntilSignable(page: Page, testInfo: TestInfo) {
-  const button = page.getByTestId('paykit-pay-confirm')
-  const deadline = Date.now() + 150_000
-  let shotSettling = false
-  while (Date.now() < deadline) {
-    await expect(button).toHaveText(new RegExp(`^(${tr.send.tapToSign}|Try again)$`), { timeout: 30_000 })
-    if ((await button.textContent())?.trim() === tr.send.tapToSign) return
-    await expect(page.getByText('Your bitcoin is still settling')).toBeVisible()
-    if (!shotSettling) {
-      await shot(page, testInfo, 'pay-settling')
-      shotSettling = true
-    }
-    await page.waitForTimeout(5_000)
-    await button.click()
-  }
-  throw new Error('the wallet never settled its coins')
-}
 
 const NOTE = 'Concert tickets'
 const SATS = 10_000
@@ -76,7 +47,7 @@ test('pays a contact’s payment request on-chain and shows its receipt', async 
   // Approve: the wallet's own send confirmation, priced for the on-chain exit.
   await page.getByTestId('paykit-incoming-approve').click()
   await expect(page.getByTestId('paykit-pay-context')).toContainText('Payment request from Alice')
-  await waitUntilSignable(page, testInfo)
+  await waitUntilSignable(page, () => shot(page, testInfo, 'pay-settling'))
   await expect(page.getByTestId('primary-amount')).toContainText(/10,000|0\.0001/)
   await shot(page, testInfo, 'pay-confirm')
 

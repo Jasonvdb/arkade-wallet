@@ -8,6 +8,7 @@ import Header from '../../components/Header'
 import InputAmount, { type InputAmountMode } from '../../components/InputAmount'
 import InputContainer from '../../components/InputContainer'
 import Padded from '../../components/Padded'
+import Toggle from '../../components/Toggle'
 import UsersRound from '../../icons/UsersRound'
 import { canConvertCurrency, satsFromEntry, textFromSats } from '../../lib/format'
 import { AspContext } from '../../providers/asp'
@@ -61,6 +62,8 @@ export default function PaykitNewRequest() {
   const [sats, setSats] = useState(0)
   const [mode, setMode] = useState<InputAmountMode>('unit')
   const [note, setNote] = useState('')
+  // Ask to be paid to the private payment details already shared with this contact (destination `any`).
+  const [usePrivate, setUsePrivate] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -83,6 +86,8 @@ export default function PaykitNewRequest() {
 
   const name = payeeName(requestContact)
   const connection = data.connections[requestContact] ?? 'pending'
+  const detailsShared = Boolean(data.sharedList?.recipients.includes(requestContact))
+  const toPrivate = usePrivate && detailsShared
   const fiatEntry = mode === 'fiat' && useFiat && canConvertCurrency(config.currency, toFiat, fromFiat)
   const changeAmount = (text: string) => {
     setAmountText(text)
@@ -110,10 +115,14 @@ export default function PaykitNewRequest() {
         to: requestContact,
         amount: { value: satsToBtc(sats), asset: 'btc' },
         paymentReference: reference,
-        destination: {
-          type: 'endpoints',
-          endpoints: [{ identifier: BOARDING_ENDPOINT, payload: JSON.stringify({ value: address }) }],
-        },
+        // `any`: the request names no address; the payer pays the private details shared with it, which hold
+        // this same boarding address.
+        destination: toPrivate
+          ? { type: 'any' }
+          : {
+              type: 'endpoints',
+              endpoints: [{ identifier: BOARDING_ENDPOINT, payload: JSON.stringify({ value: address }) }],
+            },
       })
       const requestHash = sent.request?.requestHash
       if (!requestHash) throw new Error('the engine kept no request')
@@ -124,6 +133,7 @@ export default function PaykitNewRequest() {
         note: reference,
         endpointId: BOARDING_ENDPOINT,
         address,
+        destination: toPrivate ? 'any' : 'endpoints',
         createdAtMs: Date.now(),
         delivery: sent.delivery,
       })
@@ -180,10 +190,22 @@ export default function PaykitNewRequest() {
               />
             </InputContainer>
 
+            {detailsShared ? (
+              <Toggle
+                text='Use private payment details'
+                subtext={`${name} pays to the details you shared privately. No address goes in the request.`}
+                checked={toPrivate}
+                onClick={() => setUsePrivate((on) => !on)}
+                testId='paykit-request-any'
+              />
+            ) : null}
+
             <p className='paykit-contact-hint' data-testid='paykit-request-hint'>
-              {connection === 'connected'
-                ? `${name} pays on-chain to your bitcoin address. The payment shows in your balance as soon as it arrives.`
-                : `${name} has not added you yet. You can ask for a payment once they do.`}
+              {connection !== 'connected'
+                ? `${name} has not added you yet. You can ask for a payment once they do.`
+                : toPrivate
+                  ? `${name} pays on-chain to your private payment details. The payment shows in your balance as soon as it arrives.`
+                  : `${name} pays on-chain to your bitcoin address. The payment shows in your balance as soon as it arrives.`}
             </p>
 
             <ErrorMessage error={Boolean(error)} text={error} />

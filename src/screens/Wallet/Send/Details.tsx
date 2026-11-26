@@ -499,7 +499,11 @@ export default function SendDetails() {
     setPayStep('preparing')
     setPayTxid(undefined)
     try {
-      const outcome = await paykitCall('payRequest', { id: paykit.id, options: { endpoint: paykit.endpointId } })
+      // A request to the payee's private details names the list it pays from (`listApp`).
+      const options = paykit.listApp
+        ? { endpoint: paykit.endpointId, listApp: paykit.listApp }
+        : { endpoint: paykit.endpointId }
+      const outcome = await paykitCall('payRequest', { id: paykit.id, options })
       setPayAttempt(outcome.attemptId)
       const record = paykitIdentity ? attemptOf(paykitIdentity, outcome.attemptId) : undefined
       if (outcome.outcome === 'paid') return paykitPaid(record?.txid)

@@ -82,6 +82,9 @@ const NO_DATA: PaykitSnapshot = {
   activity: [],
   activityLoaded: false,
   checks: {},
+  sharedList: null,
+  receivedLists: [],
+  listsLoaded: false,
 }
 
 /** How often the boarding coins are read into the seen-cache while a sent request waits for its payment. */
@@ -264,7 +267,9 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
   const syncIdentity = state.status === 'ready' || state.status === 'restarting' ? state.identity : undefined
   useEffect(() => {
     if (!syncIdentity) return setSync(undefined)
-    const next = new PaykitSync(syncIdentity, call, subscribe)
+    // The private payment details are the boarding address of the unlocked wallet.
+    const listAddress = async () => exitDeps.current?.wallet.getBoardingAddress()
+    const next = new PaykitSync(syncIdentity, call, subscribe, listAddress)
     next.start()
     setSync(next)
     return () => next.stop()

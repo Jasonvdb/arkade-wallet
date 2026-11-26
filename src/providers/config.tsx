@@ -6,6 +6,7 @@ import { normalizeBitcoinUnit } from '../lib/format'
 import { setHapticsEnabled } from '../lib/haptics'
 import { getCurrency, detectLanguage } from '@/lib/language'
 import { setDocumentThemeColor } from '../lib/documentSurface'
+import { isLocalOnly } from '../lib/localOnly'
 
 const defaultConfig: Config = {
   announcementsSeen: [],
@@ -24,7 +25,8 @@ const defaultConfig: Config = {
   lnurlPrimary: '',
   showBalance: true,
   theme: Themes.Auto,
-  unit: Unit.BTC,
+  // A local-only run shows sats: its regtest amounts are small, and Payment Request amounts are typed in sats.
+  unit: isLocalOnly() ? Unit.SATS : Unit.BTC,
   walletMode: 'static',
 }
 

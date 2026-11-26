@@ -58,7 +58,10 @@ export interface SentRecord {
   sats: number
   note: string
   endpointId: string
+  /** The address it asks to be paid to; for `any`, the boarding address the wallet shares privately. */
   address: string
+  /** `endpoints`: the address is in the request; `any`: the payer pays the private details shared with it. */
+  destination?: 'endpoints' | 'any'
   createdAtMs: number
   /** Where the request message stood when it was sent (`accepted`, `queued`, `waitingForAdmission`, ...). */
   delivery: string

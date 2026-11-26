@@ -57,6 +57,31 @@
   width: 100%;
 }
 
+/* A contact's private payment details: rows like the contact rows, but not buttons. */
+.paykit-detail-row {
+  cursor: default;
+}
+
+.paykit-detail-row:active {
+  background: transparent;
+  transform: none;
+}
+
+.paykit-detail-row .paykit-detail-row__avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: var(--text-sm);
+}
+
+.paykit-detail-row__address {
+  font-variant-numeric: tabular-nums;
+}
+
+.paykit-detail-hint {
+  padding: 0 0.125rem;
+  font-size: var(--text-xs);
+}
+
 /* A contact's page lists the requests sent and received one under the other. */
 .contact-history > .paykit-requests + .paykit-requests {
   margin-top: 1rem;
@@ -231,6 +256,10 @@
   border-radius: 999px;
   background: var(--green-500);
   color: #fff;
+}
+
+.paykit-receipt--private .paykit-receipt__icon {
+  background: var(--purple-700);
 }
 
 .paykit-receipt--warning {

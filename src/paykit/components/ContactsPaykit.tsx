@@ -2,9 +2,11 @@ import { useContext } from 'react'
 import ArrowIcon from '../../icons/Arrow'
 import { ConfigContext } from '../../providers/config'
 import { NavigationContext, Pages } from '../../providers/navigation'
-import { prettyBitcoinAmount } from '../../lib/format'
+import ShieldIcon from '../../icons/ShieldCheckOutline'
+import { prettyBitcoinAmount, prettyLongText } from '../../lib/format'
 import { contactDisplayName, readContacts, type Contact } from '../../lib/contacts'
 import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
+import { methodName, privateEndpointOf } from '../lists'
 import { requestKeyOf, shortPubky } from '../pay'
 import { PaykitContext } from '../provider'
 import type { OneTimeRequest, PayeeRequest } from '../protocol'
@@ -276,6 +278,81 @@ export function SentRequests({ payer, label = 'Requests you sent' }: { payer?: s
           <SentRow key={item.activity.record} item={item} contacts={contacts} fromContactPage={Boolean(payer)} />
         ))}
       </div>
+    </section>
+  )
+}
+
+/**
+ * On a connected contact's page: the private payment details both sides share (Private Payment Lists). The
+ * wallet shares its own by itself once the contact is connected; the contact's show once they arrive, as the
+ * kind of address and the address, shortened. Nothing while the contact is not connected.
+ */
+export function PrivateDetails({ contact, name }: { contact: string; name: string }) {
+  const { status, data } = useContext(PaykitContext)
+  if (status !== 'ready' && status !== 'restarting') return null
+  if (data.connections[contact] !== 'connected') return null
+  const shared = Boolean(data.sharedList?.recipients.includes(contact))
+  const theirs = privateEndpointOf(data.receivedLists, contact)
+  return (
+    <section className='settings-section paykit-requests' data-testid='paykit-private-details'>
+      <p className='settings-section-label'>Private payment details</p>
+      <div className='contact-list settings-row-group'>
+        <div
+          className='settings-row paykit-detail-row'
+          data-testid='paykit-share-details'
+          data-state={shared ? 'shared' : 'sharing'}
+        >
+          <span className='settings-row__main'>
+            <span className='settings-row__icon' aria-hidden='true'>
+              <ShieldIcon />
+            </span>
+            <span className='contact-list-item-copy'>
+              <strong>Your details</strong>
+              <small>{shared ? `Shared with ${name}` : `Sharing with ${name}…`}</small>
+            </span>
+          </span>
+          <span
+            className={`paykit-request__status paykit-request__status--${shared ? 'paid' : 'pending'}`}
+            data-testid='paykit-share-status'
+          >
+            {shared ? 'Shared' : 'Sharing'}
+          </span>
+        </div>
+        <div
+          className='settings-row paykit-detail-row'
+          data-testid='paykit-contact-details'
+          data-state={theirs ? 'received' : 'waiting'}
+          data-endpoint={theirs?.endpointId}
+          data-address={theirs?.address}
+        >
+          <span className='settings-row__main'>
+            <span className='contact-avatar contact-avatar--row paykit-detail-row__avatar' aria-hidden='true'>
+              {initialFor(name)}
+            </span>
+            <span className='contact-list-item-copy'>
+              <strong>{`${name}'s details`}</strong>
+              <small data-testid='paykit-contact-details-method'>
+                {theirs ? methodName(theirs.endpointId) : `${name} has not shared details yet`}
+              </small>
+              {theirs ? (
+                <small className='paykit-detail-row__address' data-testid='paykit-contact-details-address'>
+                  {prettyLongText(theirs.address, 10)}
+                </small>
+              ) : null}
+            </span>
+          </span>
+          <span
+            className={`paykit-request__status paykit-request__status--${theirs ? 'paid' : 'expired'}`}
+            data-testid='paykit-contact-details-status'
+          >
+            {theirs ? 'Shared with you' : 'Not yet'}
+          </span>
+        </div>
+      </div>
+      <p className='paykit-contact-hint paykit-detail-hint'>
+        Only you and {name} can see these. A payment request between you can be paid to these details instead of an
+        address in the request.
+      </p>
     </section>
   )
 }

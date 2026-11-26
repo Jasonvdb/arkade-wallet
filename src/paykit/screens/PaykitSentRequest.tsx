@@ -15,6 +15,7 @@ import HashIcon from '../../icons/Hash'
 import StatusIcon from '../../icons/Status'
 import TypeIcon from '../../icons/Type'
 import UsersRound from '../../icons/UsersRound'
+import ShieldIcon from '../../icons/ShieldCheckOutline'
 import { prettyBitcoinAmount, prettyDate } from '../../lib/format'
 import { buildTransactionAmountDisplay } from '../../lib/transactionAmountDisplay'
 import { ConfigContext } from '../../providers/config'
@@ -87,6 +88,8 @@ export default function PaykitSentRequest() {
   const paidAtMs = sent?.paidAtMs ?? (lastCheck?.kind === 'verified' ? lastCheck.paidAtMs : undefined)
   const amountDisplay = buildTransactionAmountDisplay({ ...displayContext, satoshis: sats ?? 0 })
   const amountText = (value: number) => prettyBitcoinAmount(value, config.unit)
+  const privateDetails = sent?.destination === 'any'
+  const payTo = privateDetails ? 'your private payment details' : 'your bitcoin address'
 
   // What the request waits for, or what came of it.
   let state: { tone: 'waiting' | 'warning' | 'done'; title: string; detail: string; key: string } | undefined
@@ -102,7 +105,7 @@ export default function PaykitSentRequest() {
       key: 'waiting',
       tone: 'waiting',
       title: `Waiting for ${name} to pay`,
-      detail: `${name} pays on-chain to your bitcoin address. Your wallet confirms it as soon as it arrives.`,
+      detail: `${name} pays on-chain to ${payTo}. Your wallet confirms it as soon as it arrives.`,
     }
   } else if (activity.status === 'proofReceived' && check?.state === 'short') {
     state = {
@@ -132,6 +135,7 @@ export default function PaykitSentRequest() {
   const rows: TableData = [
     ['Pay from', name, <UsersRound key='from' size={16} />],
     ['Pay to', sent?.address, <TypeIcon key='to' />],
+    ['Payment details', privateDetails ? 'Your private details' : undefined, <ShieldIcon key='details' />],
     ['Status', status.text, <StatusIcon key='status' />],
     [
       'Received',
@@ -157,6 +161,7 @@ export default function PaykitSentRequest() {
               data-check={check?.state ?? 'none'}
               data-txid={txid}
               data-received-sats={receivedSats}
+              data-destination={sent?.destination ?? 'endpoints'}
             >
               <span className='contact-avatar' aria-hidden='true'>
                 {initialFor(name)}

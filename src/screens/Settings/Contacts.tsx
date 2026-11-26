@@ -28,7 +28,13 @@ import { NavigationContext, Pages } from '../../providers/navigation'
 import { useTranslation } from '../../providers/language'
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
 import { WalletContext } from '../../providers/wallet'
-import { ConnectionStatus, IncomingRequests, SentRequests, shortPubky } from '../../paykit/components/ContactsPaykit'
+import {
+  ConnectionStatus,
+  IncomingRequests,
+  PrivateDetails,
+  SentRequests,
+  shortPubky,
+} from '../../paykit/components/ContactsPaykit'
 import { paykitConfig } from '../../paykit/config'
 import { pubkyIdOfContact } from '../../paykit/contacts'
 import { PaykitContext } from '../../paykit/provider'
@@ -244,6 +250,7 @@ export default function Contacts() {
                 </section>
                 {contactPubky ? (
                   <div className='contact-history'>
+                    <PrivateDetails contact={contactPubky} name={contactDisplayName(contact)} />
                     <SentRequests payer={contactPubky} />
                     <IncomingRequests
                       payee={contactPubky}
