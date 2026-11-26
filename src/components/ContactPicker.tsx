@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ChevronDown from '../icons/ChevronDown'
 import UsersRound from '../icons/UsersRound'
 import { contactDisplayName, readContacts } from '../lib/contacts'
+import { pubkyIdOfContact } from '../paykit/contacts'
 import Button from './Button'
 import SheetModal from './SheetModal'
 import { useTranslation } from '../providers/language'
@@ -15,7 +16,8 @@ export default function ContactPicker({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const contacts = readContacts()
+  // Pubky contacts are paid through their Payment Requests (Paykit), not by an address typed here.
+  const contacts = readContacts().filter((contact) => !pubkyIdOfContact(contact.address))
   if (!contacts.length) return null
   return (
     <>

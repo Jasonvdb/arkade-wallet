@@ -17,6 +17,7 @@ import {
   contactDisplayName,
   forgetContact,
   isReusableContact,
+  normalizeContactAddress,
   readContacts,
   readRecents,
   saveContact,
@@ -27,6 +28,10 @@ import { NavigationContext, Pages } from '../../providers/navigation'
 import { useTranslation } from '../../providers/language'
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
 import { WalletContext } from '../../providers/wallet'
+import { ConnectionStatus, IncomingRequests, shortPubky } from '../../paykit/components/ContactsPaykit'
+import { paykitConfig } from '../../paykit/config'
+import { pubkyIdOfContact } from '../../paykit/contacts'
+import { PaykitContext } from '../../paykit/provider'
 
 type EditorMode = 'new' | 'edit' | 'convert'
 
@@ -37,6 +42,7 @@ export default function Contacts() {
   const { navigate } = useContext(NavigationContext)
   const { setSendInfo } = useContext(FlowContext)
   const { txs } = useContext(WalletContext)
+  const { identity: ownPubky, data: paykit, refreshContacts } = useContext(PaykitContext)
   const { t } = useTranslation()
   const copyAddress = useCopyToClipboard()
   const [contacts, setContacts] = useState(readContacts)
@@ -50,6 +56,9 @@ export default function Contacts() {
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const contact = contacts.find(({ address }) => address === selected)
+  const contactPubky = contact ? pubkyIdOfContact(contact.address) : undefined
+  // A Pubky contact is pending until it adds this wallet back (Paykit).
+  const connectionOf = (pubkyId: string) => paykit.connections[pubkyId] ?? 'pending'
 
   const refresh = () => {
     setContacts(readContacts())
@@ -94,14 +103,16 @@ export default function Contacts() {
 
   const save = () => {
     setError('')
-    const target = address.trim()
+    const target = normalizeContactAddress(address)
     if (!isReusableContact(target)) return setError(t('contacts.invalidAddress'))
+    if (ownPubky && pubkyIdOfContact(target) === ownPubky) return setError('This is your own Pubky ID')
     if (contacts.some((contact) => contact.address === target && contact.address !== editTarget)) {
       return setError(t('contacts.addressTaken'))
     }
     if (!saveContact(target, name, editTarget)) return setError(t('contacts.saveFailed'))
     backupContacts(readContacts()).catch((err) => consoleError(err, 'failed to backup contacts'))
     refresh()
+    refreshContacts()
     setSelected(target)
     closeEditor()
   }
@@ -110,6 +121,7 @@ export default function Contacts() {
     if (!selected || !forgetContact(selected)) return setError(t('contacts.saveFailed'))
     backupContacts(readContacts()).catch((err) => consoleError(err, 'failed to backup contacts'))
     refresh()
+    refreshContacts()
     setSelected(undefined)
     setDeleting(false)
   }
@@ -125,6 +137,8 @@ export default function Contacts() {
   const countLabel = contacts.length === 1 ? t('contacts.countOne') : t('contacts.count', { count: contacts.length })
   const sendCountLabel = (count: number) =>
     count === 1 ? t('contacts.sentTimesOne') : t('contacts.sentTimes', { count })
+  // Paykit: a contact may also be a Pubky ID, to exchange payment requests with.
+  const addressLabel = paykitConfig.enabled ? 'Address or Pubky ID' : t('common.address')
   const editorTitle =
     mode === 'edit' ? t('contacts.edit') : mode === 'convert' ? t('contacts.convert') : t('contacts.addNew')
 
@@ -141,6 +155,7 @@ export default function Contacts() {
                     <button
                       type='button'
                       className='contact-detail-back'
+                      data-testid='contact-back'
                       aria-label={t('contacts.title')}
                       onClick={() => setSelected(undefined)}
                     >
@@ -157,12 +172,22 @@ export default function Contacts() {
                       <button
                         type='button'
                         className='contact-destination'
-                        title={t('components.copyAddress')}
+                        title={contactPubky ? 'Copy Pubky ID' : t('components.copyAddress')}
+                        data-testid={contactPubky ? 'paykit-contact-pubky' : undefined}
                         onClick={() => copyAddress(contact.address)}
                       >
-                        {contact.address}
+                        {contactPubky ? shortPubky(contactPubky) : contact.address}
                       </button>
-                      <div className='contact-stats'>
+                      {contactPubky ? (
+                        <ConnectionStatus
+                          pill
+                          connection={connectionOf(contactPubky)}
+                          name={contactDisplayName(contact)}
+                          pubkyId={contactPubky}
+                          testId='paykit-contact-status'
+                        />
+                      ) : null}
+                      <div className='contact-stats' hidden={Boolean(contactPubky)}>
                         <span>{sendCountLabel(contact.sendCount)}</span>
                         {contact.lastSentAt ? (
                           <span>
@@ -174,7 +199,15 @@ export default function Contacts() {
                       </div>
                     </div>
                   </div>
-                  <Button label={t('contacts.sendToName', { name: contactDisplayName(contact) })} onClick={send} />
+                  {contactPubky ? (
+                    <p className='paykit-contact-hint'>
+                      {connectionOf(contactPubky) === 'connected'
+                        ? `You and ${contactDisplayName(contact)} can send each other payment requests.`
+                        : `Share your Pubky ID with ${contactDisplayName(contact)}. Once they add you, you can send each other payment requests.`}
+                    </p>
+                  ) : (
+                    <Button label={t('contacts.sendToName', { name: contactDisplayName(contact) })} onClick={send} />
+                  )}
                   <div className='contact-detail-actions'>
                     <Button label={t('contacts.edit')} secondary onClick={() => openEdit(contact.address)} />
                     <Button
@@ -185,47 +218,72 @@ export default function Contacts() {
                   </div>
                   <ErrorMessage error={Boolean(error)} text={error} />
                 </section>
-                <section className='settings-section contact-history'>
-                  <p className='settings-section-label'>{t('contacts.history')}</p>
-                  {history.length ? (
-                    <TransactionsList mode='static' addressFilter={contact.address} />
-                  ) : (
-                    <p className='contact-history-empty'>{t('contacts.historyEmpty')}</p>
-                  )}
-                </section>
+                {contactPubky ? (
+                  <div className='contact-history'>
+                    <IncomingRequests
+                      payee={contactPubky}
+                      emptyText={`No payment requests from ${contactDisplayName(contact)} yet.`}
+                    />
+                  </div>
+                ) : (
+                  <section className='settings-section contact-history'>
+                    <p className='settings-section-label'>{t('contacts.history')}</p>
+                    {history.length ? (
+                      <TransactionsList mode='static' addressFilter={contact.address} />
+                    ) : (
+                      <p className='contact-history-empty'>{t('contacts.historyEmpty')}</p>
+                    )}
+                  </section>
+                )}
               </>
             ) : (
               <>
+                <IncomingRequests />
                 <section className='settings-section'>
                   <div className='contact-section-head'>
                     <p className='settings-section-label'>{t('contacts.saved')}</p>
                     <span className='contact-count'>{countLabel}</span>
                   </div>
-                  <Button label={t('contacts.addNew')} secondary onClick={() => openNew()} />
+                  <Button label={t('contacts.addNew')} secondary onClick={() => openNew()} testId='contacts-new' />
                   {contacts.length ? (
                     <div className='contact-list settings-row-group'>
-                      {contacts.map((item) => (
-                        <button
-                          key={item.address}
-                          type='button'
-                          className='settings-row contact-list-item'
-                          aria-label={contactDisplayName(item)}
-                          onClick={() => select(item.address)}
-                        >
-                          <span className='settings-row__main'>
-                            <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
-                              {initialFor(contactDisplayName(item))}
+                      {contacts.map((item) => {
+                        const pubkyId = pubkyIdOfContact(item.address)
+                        return (
+                          <button
+                            key={item.address}
+                            type='button'
+                            className='settings-row contact-list-item'
+                            aria-label={contactDisplayName(item)}
+                            data-testid={pubkyId ? 'paykit-contact-row' : undefined}
+                            data-pubky={pubkyId}
+                            data-connection={pubkyId ? connectionOf(pubkyId) : undefined}
+                            onClick={() => select(item.address)}
+                          >
+                            <span className='settings-row__main'>
+                              <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
+                                {initialFor(contactDisplayName(item))}
+                              </span>
+                              <span className='contact-list-item-copy'>
+                                <strong>
+                                  {pubkyId && !item.name?.trim() ? shortPubky(pubkyId) : contactDisplayName(item)}
+                                </strong>
+                                {pubkyId ? (
+                                  <ConnectionStatus
+                                    connection={connectionOf(pubkyId)}
+                                    name={item.name?.trim() || 'them'}
+                                  />
+                                ) : (
+                                  <small>{item.name?.trim() ? item.address : sendCountLabel(item.sendCount)}</small>
+                                )}
+                              </span>
                             </span>
-                            <span className='contact-list-item-copy'>
-                              <strong>{contactDisplayName(item)}</strong>
-                              <small>{item.name?.trim() ? item.address : sendCountLabel(item.sendCount)}</small>
+                            <span className='settings-row__chevron' aria-hidden='true'>
+                              <ArrowIcon />
                             </span>
-                          </span>
-                          <span className='settings-row__chevron' aria-hidden='true'>
-                            <ArrowIcon />
-                          </span>
-                        </button>
-                      ))}
+                          </button>
+                        )
+                      })}
                     </div>
                   ) : (
                     <div className='contact-empty'>
@@ -288,18 +346,18 @@ export default function Contacts() {
               onChange={(e) => setName(e.target.value)}
             />
           </InputContainer>
-          <InputContainer label={t('common.address')}>
+          <InputContainer label={addressLabel}>
             <textarea
               data-testid='contact-address'
               id='contact-address'
               className='input contact-address-input'
-              aria-label={t('common.address')}
+              aria-label={addressLabel}
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               rows={3}
             />
           </InputContainer>
-          <Button label={t('contacts.save')} onClick={save} />
+          <Button label={t('contacts.save')} onClick={save} testId='contact-save' />
           <Button label={t('common.cancel')} secondary onClick={closeEditor} />
         </div>
       </SheetModal>

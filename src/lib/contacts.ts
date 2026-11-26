@@ -4,6 +4,7 @@ import { isBTCAddress } from './address'
 import { decodeBip21 } from './bip21'
 import { consoleError } from './logs'
 import { getStorageItem, setStorageItemSafely } from './storage'
+import { parsePubkyId, pubkyContactAddress } from '../paykit/contacts'
 import type { SendInfo } from '../providers/flow'
 import type { Tx } from './types'
 
@@ -45,7 +46,15 @@ const writeList = (key: string, list: Contact[]): boolean => {
   }
 }
 
+/** The form a contact is saved under: a Pubky ID always as `pubky<id>`, anything else as typed. */
+export function normalizeContactAddress(address: string): string {
+  const pubkyId = parsePubkyId(address)
+  return pubkyId ? pubkyContactAddress(pubkyId) : address.trim()
+}
+
 export function isReusableContact(address: string): boolean {
+  // A Pubky ID: a contact to send Payment Requests to and get them from (Paykit).
+  if (parsePubkyId(address)) return true
   try {
     if (address.startsWith('bitcoin:')) {
       const { address: bitcoin, arkAddress, lnUrl, invoice } = decodeBip21(address)
@@ -144,7 +153,7 @@ export function readRecents(): Recent[] {
 }
 
 export function saveContact(address: string, name: string, previousAddress?: string): boolean {
-  const target = address.trim()
+  const target = normalizeContactAddress(address)
   if (!isReusableContact(target)) return false
   const contacts = readContacts()
   const previous = contacts.find((contact) => contact.address === previousAddress)

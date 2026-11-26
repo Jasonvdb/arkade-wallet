@@ -16,6 +16,7 @@ import { pubkyIdOf, secretToHex, storePrefixFor } from './identity'
 import type { EngineCalls, EngineEvent, EngineOp } from './protocol'
 import { noPaymentsRail, type PageRail } from './rail'
 import { identitySecretState, subscribeIdentitySecret } from './secret'
+import { PaykitSync, type PaykitSnapshot } from './sync'
 import { acquireTabLock } from './tabLock'
 
 /**
@@ -47,7 +48,14 @@ export interface PaykitContextValue extends PaykitState {
   call: <O extends EngineOp>(op: O, args: EngineCalls[O]['args']) => Promise<EngineCalls[O]['result']>
   /** Listens to what the engine reports by itself. */
   subscribe: (listener: (event: EngineEvent) => void) => () => void
+  /** Pubky contacts' connections and the incoming Payment Requests (see `PaykitSync`). */
+  data: PaykitSnapshot
+  /** Reads the saved contacts again now, such as right after a Pubky contact was saved or deleted. */
+  refreshContacts: () => void
 }
+
+const NO_DATA: PaykitSnapshot = { connections: {}, requests: [], requestsLoaded: false }
+const noSync = { subscribe: () => () => {}, getSnapshot: () => NO_DATA }
 
 const notReady = () => Promise.reject(new Error('Paykit is not ready'))
 
@@ -58,6 +66,8 @@ export const PaykitContext = createContext<PaykitContextValue>({
   retry: () => {},
   call: notReady,
   subscribe: () => () => {},
+  data: NO_DATA,
+  refreshContacts: () => {},
 })
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -174,8 +184,6 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), [])
-
   const call = useCallback(<O extends EngineOp>(op: O, args: EngineCalls[O]['args']) => {
     const client = clientRef.current
     if (!client) return notReady() as Promise<EngineCalls[O]['result']>
@@ -189,6 +197,22 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const retry = useCallback(() => setAttempt((n) => n + 1), [])
+
+  // Contacts and incoming requests follow the engine while it runs for this identity (through restarts).
+  const [sync, setSync] = useState<PaykitSync>()
+  const syncIdentity = state.status === 'ready' || state.status === 'restarting' ? state.identity : undefined
+  useEffect(() => {
+    if (!syncIdentity) return setSync(undefined)
+    const next = new PaykitSync(syncIdentity, call, subscribe)
+    next.start()
+    setSync(next)
+    return () => next.stop()
+  }, [syncIdentity, call, subscribe])
+  const syncSource = sync ?? noSync
+  const data = useSyncExternalStore(syncSource.subscribe, syncSource.getSnapshot)
+  const refreshContacts = useCallback(() => sync?.refresh(), [sync])
+
   const value = useMemo<PaykitContextValue>(
     () => ({
       ...state,
@@ -197,8 +221,10 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
       retry,
       call,
       subscribe,
+      data,
+      refreshContacts,
     }),
-    [state, retry, call, subscribe],
+    [state, retry, call, subscribe, data, refreshContacts],
   )
 
   return <PaykitContext.Provider value={value}>{children}</PaykitContext.Provider>

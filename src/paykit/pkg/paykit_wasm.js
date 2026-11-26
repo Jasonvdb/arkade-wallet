@@ -1,6 +1,136 @@
 /* @ts-self-types="./paykit_wasm.d.ts" */
 
 /**
+ * Whether `identity` may start a conversation with this one, as this app's copy of the
+ * allow and deny lists shows it.
+ *
+ * # Errors
+ *
+ * `invalid_input`, `not_started`, `busy`, or `paykit`.
+ * @param {string} identity
+ * @returns {Promise<boolean>}
+ */
+export function admits(identity) {
+    const ptr0 = passStringToWasm0(identity, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.admits(ptr0, len0);
+    return ret;
+}
+
+/**
+ * Allows `identity` (a Pubky ID) to start a conversation with this one: a reply grant at
+ * this identity's Dispatch, which also allows a pending connect request from it
+ * (Dispatch spec 7). A payer allows each payee it expects requests from. Emits
+ * `admissionChanged` when the admission changed.
+ *
+ * # Errors
+ *
+ * `invalid_input` for a malformed Pubky ID, `not_started`, `busy`, or `paykit`.
+ * @param {string} identity
+ * @returns {Promise<void>}
+ */
+export function allowConnect(identity) {
+    const ptr0 = passStringToWasm0(identity, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.allowConnect(ptr0, len0);
+    return ret;
+}
+
+/**
+ * The started engine's App ID, base64url.
+ *
+ * # Errors
+ *
+ * `not_started`, or `busy` while the engine starts or stops.
+ * @returns {string}
+ */
+export function appId() {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        wasm.appId(retptr);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr1 = r0;
+        var len1 = r1;
+        if (r3) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(r2);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Cancels the request this identity sent whose payee activity record is `record` (hex),
+ * with an optional `reason`, and resolves to the cancellation's message ID. A proof that
+ * crosses it still counts.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused`; `conflict`; `not_started`, `busy`, or `paykit`.
+ * @param {string} record
+ * @param {string | null} [reason]
+ * @returns {Promise<string>}
+ */
+export function cancelSentRequest(record, reason) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passStringToWasm0(record, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = isLikeNone(reason) ? 0 : passStringToWasm0(reason, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_export3(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_export3(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.cancelSentRequest(ptr0, len0, ptr1, len1);
+    return ret;
+}
+
+/**
+ * Verifies the payment in the payee activity record `record` (hex) as `verifyPayment`
+ * does and, when the method confirms it, sends the payer a receipt. Resolves to the
+ * receipt's message ID (the same one on a repeat), or `null` when the payment is not
+ * confirmed. The record's status becomes `receipted`.
+ *
+ * # Errors
+ *
+ * As `verifyPayment`, and `refused` `divergent`.
+ * @param {string} record
+ * @returns {string | null}
+ */
+export function confirmPayment(record) {
+    const ptr0 = passStringToWasm0(record, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.confirmPayment(ptr0, len0);
+    return ret;
+}
+
+/**
+ * The identity's allow list and deny list, read from its Dispatch (`Contacts` in the
+ * declarations). Emits `admissionChanged` for each contact whose admission changed.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @returns {Contacts}
+ */
+export function contacts() {
+    const ret = wasm.contacts();
+    return ret;
+}
+
+/**
  * The started engine's Pubky ID, z-base-32, without a prefix.
  *
  * # Errors
@@ -42,7 +172,301 @@ export function instantiated() {
 }
 
 /**
- * Starts the engine of this worker with `options` (`StartOptions` in the declarations).
+ * Where the message this app sent as `msgId` stands, after one try of the outbox:
+ * `accepted`, `queued`, `kept`, `waitingForAdmission`, `certificateNotCurrent` or
+ * `failed`; `null` when the client keeps nothing of it (accepted or ended long ago, or
+ * not sent from these stores).
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @param {string} msg_id
+ * @returns {string | null}
+ */
+export function messageDelivery(msg_id) {
+    const ptr0 = passStringToWasm0(msg_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.messageDelivery(ptr0, len0);
+    return ret;
+}
+
+/**
+ * Pays the request `id` (`RequestId`) as payer: the SDK writes the attempt, the host's
+ * `rail.pay` pays it, and the proof is sent to the payee. Resolves to `PaymentOutcome`:
+ * `paid` once the method paid within the pay limit, `pending` when it has not answered
+ * yet (the engine finishes the payment when it does: `paymentsResumed`).
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` when the request is not payable, nothing paid, with
+ * `reason` such as `alreadyPaid`, `paymentInProgress`, `rejected`, `cancelled`,
+ * `noDestination`, `unsupportedEndpoint` or `attemptFailed`, or for a request with
+ * destination `any` `waitingForList` (no usable list from the payee yet: the engine has
+ * asked it for one; try again after `listReceived`); `conflict`; `not_started`,
+ * `busy`, or `paykit`. A failure after money may have moved is never an error: it is the
+ * `pending` or `uncertain` outcome.
+ * @param {RequestId} id
+ * @param {PayRequestOptions} [options]
+ * @returns {PaymentOutcome}
+ */
+export function payRequest(id, options) {
+    const ret = wasm.payRequest(id, options);
+    return ret;
+}
+
+/**
+ * The requests this identity sent and the payments it received as payee
+ * (`PayeeRequest[]`).
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @returns {PayeeRequest[]}
+ */
+export function payeeActivity() {
+    const ret = wasm.payeeActivity();
+    return ret;
+}
+
+/**
+ * The payer's payments, from its journal (`PaymentEntry[]`), each with the payee's
+ * receipt once it came.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @returns {PaymentEntry[]}
+ */
+export function payments() {
+    const ret = wasm.payments();
+    return ret;
+}
+
+/**
+ * Sends `identity` a `resend_request` that selects nothing (one fresh, unknown message
+ * ID), so that its delivery tells whether `identity` admits this one: Paykit has no read
+ * of the other side's allow list. Resolves to the request's message ID; read it with
+ * `messageDelivery`. It stays `waitingForAdmission` until `identity` admits this one,
+ * and turns `accepted` at the first delivery try after. The recipient has nothing to
+ * re-send, and a `resend_request` adds no reply grant.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` (`scopeMissing` for an app approved without
+ * `paykit_contacts`, `heldForUser`); `not_started`, `busy`, or `paykit`.
+ * @param {string} identity
+ * @returns {Promise<string>}
+ */
+export function probeAdmission(identity) {
+    const ptr0 = passStringToWasm0(identity, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.probeAdmission(ptr0, len0);
+    return ret;
+}
+
+/**
+ * Shares the list `setListEndpoints` set with the contact `identity` (a Pubky ID): a
+ * signed Private Payment List goes to its inbox, now or at a later round. The contact
+ * must admit this identity (its `allowConnect`). Emits `sharedListUpdated`.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused`: `usage` before the list is set or for this identity
+ * itself, `heldForUser` while the deny list holds the contact, `notNow` while an
+ * earlier publication to it is unresolved (a later round sends it), or
+ * `listDeliveryUnknown`; `not_started`, `busy`, or `paykit`.
+ * @param {string} identity
+ * @returns {Promise<void>}
+ */
+export function publishListTo(identity) {
+    const ptr0 = passStringToWasm0(identity, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.publishListTo(ptr0, len0);
+    return ret;
+}
+
+/**
+ * Runs one receive round now (`ReceiveResult`), emitting its events, as the feed loop
+ * does: for a host that started with `autoReceive: false`, or wants a read at once.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit` when the read failed.
+ * @returns {ReceiveResult}
+ */
+export function receive() {
+    const ret = wasm.receive();
+    return ret;
+}
+
+/**
+ * The Private Payment Lists contacts shared with this identity (`ReceivedList[]`): the
+ * latest from each of their apps, a withdrawn one with no endpoints. `listReceived`
+ * tells each new one.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @returns {ReceivedList[]}
+ */
+export function receivedLists() {
+    const ret = wasm.receivedLists();
+    return ret;
+}
+
+/**
+ * Rejects the request `id` as payer, with an optional `reason` the payee sees, and
+ * resolves to the rejection's message ID.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` (`notFound`, `alreadyPaid`, `paymentInProgress`, ...);
+ * `conflict`; `not_started`, `busy`, or `paykit`.
+ * @param {RequestId} id
+ * @param {string | null} [reason]
+ * @returns {Promise<string>}
+ */
+export function rejectRequest(id, reason) {
+    var ptr0 = isLikeNone(reason) ? 0 : passStringToWasm0(reason, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.rejectRequest(id, ptr0, len0);
+    return ret;
+}
+
+/**
+ * The payee's receipts of the request `id` the payer holds (`Receipt[]`).
+ *
+ * # Errors
+ *
+ * `invalid_input`, `not_started`, `busy`, or `paykit`.
+ * @param {RequestId} id
+ * @returns {Receipt[]}
+ */
+export function requestReceipts(id) {
+    const ret = wasm.requestReceipts(id);
+    return ret;
+}
+
+/**
+ * The one-time requests this identity holds as payer (`OneTimeRequest[]`).
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit` (also while the app's first listing is not done).
+ * @returns {OneTimeRequest[]}
+ */
+export function requests() {
+    const ret = wasm.requests();
+    return ret;
+}
+
+/**
+ * For tests: removes this worker's engine and the identity's enrolment state, so the
+ * identity can be enrolled again, such as after the Dispatch's database was reset.
+ *
+ * It stops the engine if one runs, destroys its two stores, and deletes the signer's
+ * `identity.json` and backup from the identity's Homeserver. With no engine running, it
+ * destroys the stores of `options.storePrefix`, and deletes the signer's files through
+ * `options.homeserver` when given. The identity's account at the Dispatch is left as it
+ * is.
+ *
+ * # Errors
+ *
+ * `bad_options`, `busy`, `store` when a store is still held elsewhere, or `homeserver`
+ * when a delete failed; the stores are destroyed first, so calling it again with the
+ * Homeserver finishes it.
+ * @param {ResetOptions | undefined} options
+ * @returns {Promise<void>}
+ */
+export function resetIdentity(options) {
+    const ret = wasm.resetIdentity(options);
+    return ret;
+}
+
+/**
+ * Finishes the payments left open now (`PaymentOutcome[]`): one a restart interrupted,
+ * or one whose method answered after the pay limit. The feed loop does it by itself once
+ * after `start` and whenever a late answer comes; a host that drives the feed itself
+ * (`autoReceive: false`) calls it.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, `rail`, or `paykit`.
+ * @returns {PaymentOutcome[]}
+ */
+export function resumePayments() {
+    const ret = wasm.resumePayments();
+    return ret;
+}
+
+/**
+ * Signs and sends a Payment Request (`RequestInput`) as payee, records it, and tries to
+ * deliver it at once. Resolves to `SentRequest`; the payee activity shows the request
+ * from now on (`activityUpdated`, status `requested`).
+ *
+ * # Errors
+ *
+ * `invalid_input` for a malformed request; `refused` (such as `reason` `scopeMissing`,
+ * `heldForUser` or `notNow`); `not_started`, `busy`, or `paykit`. After a `paykit` error
+ * read `payeeActivity()` before sending it again: the request may have been kept.
+ * @param {RequestInput} request
+ * @returns {SentRequest}
+ */
+export function sendRequest(request) {
+    const ret = wasm.sendRequest(request);
+    return ret;
+}
+
+/**
+ * Sets the reusable Private Payment List this identity shares (`ListEndpoint[]`), such
+ * as `[{identifier: "btc-regtest-p2tr", payload: "{\"value\":\"<address>\"}"}]`. Each
+ * contact it is shared with is sent the changed list, now or at a later round; an empty
+ * list withdraws the details from all of them. Emits `sharedListUpdated`.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` (`scopeMissing`, `notNow`, ...); `not_started`, `busy`, or
+ * `paykit`.
+ * @param {ListEndpoint[]} endpoints
+ * @returns {Promise<void>}
+ */
+export function setListEndpoints(endpoints) {
+    const ret = wasm.setListEndpoints(endpoints);
+    return ret;
+}
+
+/**
+ * The Private Payment List this identity shares, and the contacts it is shared with
+ * (`SharedList`).
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `paykit`.
+ * @returns {SharedList}
+ */
+export function sharedList() {
+    const ret = wasm.sharedList();
+    return ret;
+}
+
+/**
+ * Runs the signer's due work now (`Signer::run_due`): renewals of the app's certificate,
+ * the key bundles the app asked for, and the deletions owed. The feed loop runs it once
+ * a minute, and at once when a read waits for scope keys.
+ *
+ * # Errors
+ *
+ * `not_started`, `busy`, or `signer`.
+ * @returns {SignerTick}
+ */
+export function signerTick() {
+    const ret = wasm.signerTick();
+    return ret;
+}
+
+/**
+ * Starts the engine of this worker with `options` (`StartOptions` in the declarations),
+ * then its feed loop unless `autoReceive` is `false`.
  *
  * # Errors
  *
@@ -57,16 +481,38 @@ export function start(options) {
 }
 
 /**
- * Stops the engine: closes the signer and the app, which releases their stores.
+ * Stops the engine: ends the feed loop, waits for the call in progress, then closes the
+ * signer and the app, which releases their stores.
  *
  * # Errors
  *
- * `not_started`, `busy` while another call is in progress, or `signer` when the signer
+ * `not_started`, `busy` while the engine starts or stops, or `signer` when the signer
  * could not close cleanly; the engine is stopped either way.
  * @returns {Promise<void>}
  */
 export function stop() {
     const ret = wasm.stop();
+    return ret;
+}
+
+/**
+ * Checks the proof the payee activity record `record` (hex) holds with the host's
+ * `rail.verify`, against the request's destination, amount and times. Resolves to the
+ * verified payment time in Unix ms, or `null` when the method does not confirm it, or
+ * the settlement is credited to another payment already.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` (`notFound` for a record without a proof,
+ * `paymentTimeOutside`, `maybeCredited`, ...); `rail` when the method could not check it
+ * now; `not_started`, `busy`, or `paykit`.
+ * @param {string} record
+ * @returns {number | null}
+ */
+export function verifyPayment(record) {
+    const ptr0 = passStringToWasm0(record, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.verifyPayment(ptr0, len0);
     return ret;
 }
 
@@ -89,6 +535,24 @@ export function version() {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
     }
+}
+
+/**
+ * Stops sharing the list with the contact `identity`: an empty list supersedes what it
+ * holds. Emits `sharedListUpdated`.
+ *
+ * # Errors
+ *
+ * `invalid_input`; `refused` (`notNow`, `listDeliveryUnknown`); `not_started`, `busy`,
+ * or `paykit`.
+ * @param {string} identity
+ * @returns {Promise<void>}
+ */
+export function withdrawListFrom(identity) {
+    const ptr0 = passStringToWasm0(identity, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.withdrawListFrom(ptr0, len0);
+    return ret;
 }
 function __wbg_get_imports() {
     const import0 = {
@@ -193,6 +657,10 @@ function __wbg_get_imports() {
         }, arguments); },
         __wbg_decrypt_0292ba3613732636: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
             const ret = arg0.decrypt(arg1, arg2, getArrayU8FromWasm0(arg3, arg4));
+            return ret;
+        }, arguments); },
+        __wbg_delete_a1677b105dc0626e: function() { return handleError(function (arg0, arg1) {
+            const ret = arg0.delete(arg1);
             return ret;
         }, arguments); },
         __wbg_done_57e08d0be6e30c02: function(arg0) {
@@ -484,6 +952,10 @@ function __wbg_get_imports() {
             const ret = new AbortController();
             return ret;
         }, arguments); },
+        __wbg_new_787b9fb330d55d78: function(arg0, arg1) {
+            const ret = new Error(getStringFromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbg_new_96baed0986e0d99f: function() { return handleError(function (arg0, arg1) {
             const ret = new URL(getStringFromWasm0(arg0, arg1));
             return ret;
@@ -495,7 +967,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_3257(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_7390(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -521,7 +993,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_3257(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_7390(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -645,6 +1117,10 @@ function __wbg_get_imports() {
             const ret = arg0.read(getArrayU8FromWasm0(arg1, arg2), arg3);
             return ret;
         }, arguments); },
+        __wbg_removeEntry_66566d62eb738227: function(arg0, arg1, arg2, arg3) {
+            const ret = arg0.removeEntry(getStringFromWasm0(arg1, arg2), arg3);
+            return ret;
+        },
         __wbg_removeEventListener_4e20bd5fac3de092: function() { return handleError(function (arg0, arg1, arg2, arg3) {
             arg0.removeEventListener(getStringFromWasm0(arg1, arg2), arg3);
         }, arguments); },
@@ -715,6 +1191,9 @@ function __wbg_get_imports() {
         },
         __wbg_set_onupgradeneeded_e977e06888863122: function(arg0, arg1) {
             arg0.onupgradeneeded = arg1;
+        },
+        __wbg_set_recursive_23a91460289c2a19: function(arg0, arg1) {
+            arg0.recursive = arg1 !== 0;
         },
         __wbg_set_redirect_a95a432ab7d10765: function(arg0, arg1) {
             arg0.redirect = __wbindgen_enum_RequestRedirect[arg1];
@@ -816,13 +1295,13 @@ function __wbg_get_imports() {
             return ret;
         }, arguments); },
         __wbindgen_generic_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 31, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4537);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 176, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_7315);
             return ret;
         },
         __wbindgen_generic_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 52, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_3180);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 90, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_8669);
             return ret;
         },
         __wbindgen_generic_0000000000000003: function(arg0) {
@@ -855,18 +1334,18 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_4537(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_4537(arg0, arg1, arg2);
+function __wasm_bindgen_func_elem_8669(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_8669(arg0, arg1, arg2);
 }
 
-function __wasm_bindgen_func_elem_3257(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_3257(arg0, arg1, arg2, arg3);
+function __wasm_bindgen_func_elem_7390(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_7390(arg0, arg1, arg2, arg3);
 }
 
-function __wasm_bindgen_func_elem_3180(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_7315(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
-        wasm.__wasm_bindgen_func_elem_3180(retptr, arg0, arg1, arg2);
+        wasm.__wasm_bindgen_func_elem_7315(retptr, arg0, arg1, arg2);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {

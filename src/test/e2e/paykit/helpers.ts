@@ -1,10 +1,10 @@
 import { execFileSync } from 'child_process'
 import { createPrivateKey, createPublicKey } from 'crypto'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { join, resolve } from 'path'
 import { mnemonicToSeedSync } from '@scure/bip39'
 import type { Page, TestInfo } from '@playwright/test'
-import { navigateToSettings } from '../utils'
+import { isDesktop, navigateToSettings } from '../utils'
 import { translations } from '../../../lib/i18n'
 
 const tr = translations.en
@@ -93,4 +93,60 @@ export async function shot(page: Page, testInfo: TestInfo, name: string): Promis
   mkdirSync(dir, { recursive: true })
   const project = testInfo.project.name.toLowerCase().replace(/\s+/g, '-')
   await page.screenshot({ path: join(dir, `${name}-${project}.png`) })
+}
+
+/** Opens the contacts screen: the sidebar on desktop, Settings > Contacts on mobile. */
+export async function openContacts(page: Page): Promise<void> {
+  if (isDesktop(page)) await page.getByTestId('desktop-nav-contacts').click()
+  else {
+    await navigateToSettings(page)
+    await page.getByRole('button', { name: tr.contacts.title, exact: true }).click()
+  }
+  await page.getByTestId('contacts-new').waitFor({ state: 'visible' })
+}
+
+/** One event line of the native peer (`paykit-peer` README, "Events"). */
+export type PeerEvent = { event: string; [field: string]: unknown }
+
+/**
+ * A native Paykit peer (`paykit-peer`) with a fresh identity in its own state folder, driven by one-shot
+ * commands. The binary is PAYKIT_PEER, or `.build/bin/paykit-peer` of the demo folder; the state folders
+ * live under PAYKIT_PEER_RUN (default `.build/run/wallet-peer`).
+ */
+export class Peer {
+  readonly id: string
+  private constructor(
+    private readonly binary: string,
+    private readonly state: string,
+  ) {
+    this.id = String(this.must('init', 'ready').identity)
+  }
+
+  static create(name: string): Peer {
+    const demo = [resolve('../..'), resolve('../../..')].find((dir) => existsSync(join(dir, '.build/bin/paykit-peer')))
+    const binary = process.env.PAYKIT_PEER ?? (demo ? join(demo, '.build/bin/paykit-peer') : 'paykit-peer')
+    const root =
+      process.env.PAYKIT_PEER_RUN ?? (demo ? join(demo, '.build/run/wallet-peer') : resolve('test-results/peer'))
+    const state = join(root, `${name}-${Date.now()}`)
+    mkdirSync(root, { recursive: true })
+    rmSync(state, { recursive: true, force: true })
+    return new Peer(binary, state)
+  }
+
+  /** Runs one command and returns its event lines. */
+  run(...args: string[]): PeerEvent[] {
+    const out = execFileSync(this.binary, ['--state', this.state, ...args], { encoding: 'utf8', timeout: 120_000 })
+    return out
+      .split('\n')
+      .filter((line) => line.trim().startsWith('{'))
+      .map((line) => JSON.parse(line) as PeerEvent)
+  }
+
+  /** Runs one command and returns its event named `event`; throws when it did not print one. */
+  must(command: string, event: string, ...args: string[]): PeerEvent {
+    const events = this.run(command, ...args)
+    const found = events.find((line) => line.event === event)
+    if (!found) throw new Error(`paykit-peer ${command} printed no ${event} event: ${JSON.stringify(events)}`)
+    return found
+  }
 }

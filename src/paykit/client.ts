@@ -1,5 +1,6 @@
 import {
   engineErrorCode,
+  PaykitCallError,
   type EngineCalls,
   type EngineEvent,
   type EngineOp,
@@ -137,7 +138,7 @@ export class PaykitClient {
         if (!call) return
         this.pending.delete(message.id)
         if (message.ok) call.resolve(message.value)
-        else call.reject(new Error(message.error))
+        else call.reject(new PaykitCallError(message.error, message.code, message.reason))
         return
       }
       case 'event':
