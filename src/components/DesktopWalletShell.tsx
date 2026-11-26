@@ -10,6 +10,7 @@ import { SettingsOptions } from '../lib/types'
 import { NavigationContext, Pages } from '../providers/navigation'
 import { WalletContext } from '../providers/wallet'
 import { OptionsContext } from '../providers/options'
+import { FlowContext } from '../providers/flow'
 import UsersRound from '../icons/UsersRound'
 
 interface DesktopWalletShellProps {
@@ -22,15 +23,19 @@ export default function DesktopWalletShell({ logoVisible, page }: DesktopWalletS
   const { booting, dataReady } = useContext(WalletContext)
   const homeBusy = Boolean(booting) && !dataReady
   const { setOption, option } = useContext(OptionsContext)
+  const { sendInfo } = useContext(FlowContext)
 
   const logoRef = useCallback((element: HTMLDivElement | null) => setDesktopLogoAnchor(element), [])
   const { t } = useTranslation()
 
   const activityActive = page === Pages.Activity || page === Pages.Transaction
   const settingsActive = page === Pages.Settings || page === Pages.Vtxos
-  // A contact's Payment Requests (Paykit) belong to Contacts.
+  // A contact's Payment Requests (Paykit) belong to Contacts, and so does paying one on the send screen.
   const paykitRequest =
-    page === Pages.PaykitRequest || page === Pages.PaykitNewRequest || page === Pages.PaykitSentRequest
+    page === Pages.PaykitRequest ||
+    page === Pages.PaykitNewRequest ||
+    page === Pages.PaykitSentRequest ||
+    (page === Pages.SendDetails && Boolean(sendInfo.paykit))
   const homeActive = !activityActive && !settingsActive && !paykitRequest
 
   const goHome = () => {

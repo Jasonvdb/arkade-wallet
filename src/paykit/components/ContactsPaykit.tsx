@@ -350,8 +350,8 @@ export function PrivateDetails({ contact, name }: { contact: string; name: strin
         </div>
       </div>
       <p className='paykit-contact-hint paykit-detail-hint'>
-        Only you and {name} can see these. Payment requests between you can ask to be paid to them instead of an address
-        in the request.
+        Only you and {name} can see these. A payment request between you can be paid to these details instead of an
+        address in the request.
       </p>
     </section>
   )

@@ -1,5 +1,6 @@
 import { ReactNode, createContext, useContext, useEffect, useState } from 'react'
 import { consoleError } from '../lib/logs'
+import { isLocalOnly } from '../lib/localOnly'
 import { AspContext } from './asp'
 
 const repo = 'https://raw.githubusercontent.com/ArkLabsHQ/asset-registry/master'
@@ -33,7 +34,8 @@ export const AssetsProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     setAssetRegistry(undefined)
-    if (!aspInfo.network) return
+    // A local-only run serves no registry file: the dev server would answer its index page instead.
+    if (!aspInfo.network || isLocalOnly()) return
     const url = getRegistryUrl(aspInfo.network)
     if (!url) return
     let cancelled = false
