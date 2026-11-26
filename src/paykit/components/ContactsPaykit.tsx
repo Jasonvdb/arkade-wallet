@@ -1,16 +1,18 @@
 import { useContext } from 'react'
+import ArrowIcon from '../../icons/Arrow'
 import { ConfigContext } from '../../providers/config'
-import { prettyBitcoinAmount, prettyLongText } from '../../lib/format'
+import { NavigationContext, Pages } from '../../providers/navigation'
+import { prettyBitcoinAmount } from '../../lib/format'
 import { contactDisplayName, readContacts, type Contact } from '../../lib/contacts'
 import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
+import { requestKeyOf, shortPubky } from '../pay'
 import { PaykitContext } from '../provider'
 import type { OneTimeRequest } from '../protocol'
 import './Paykit.css'
 
-const initialFor = (label: string): string => label.trim().charAt(0).toUpperCase() || '?'
+export { shortPubky }
 
-/** A Pubky ID shortened for a row or a card: `pubky` and the first and last characters. */
-export const shortPubky = (pubkyId: string): string => prettyLongText(pubkyContactAddress(pubkyId), 10)
+const initialFor = (label: string): string => label.trim().charAt(0).toUpperCase() || '?'
 
 /** Where a request stands for the payer, in words. Unknown statuses read as pending. */
 const REQUEST_STATUS: Record<string, { text: string; tone: string }> = {
@@ -24,7 +26,11 @@ const REQUEST_STATUS: Record<string, { text: string; tone: string }> = {
   cancelled: { text: 'Cancelled', tone: 'cancelled' },
   expired: { text: 'Expired', tone: 'expired' },
 }
-const requestStatus = (status: string) => REQUEST_STATUS[status] ?? { text: 'Pending', tone: 'pending' }
+/** A request's status in words; a paid request waits for the contact's receipt. */
+export const requestStatus = (status: string, receipt: boolean): { text: string; tone: string } => {
+  if (status === 'paid' && !receipt) return { text: 'Waiting for receipt', tone: 'pending' }
+  return REQUEST_STATUS[status] ?? { text: 'Pending', tone: 'pending' }
+}
 
 /** Whether a Pubky contact has added this wallet back: a dot and words, or a pill on the contact's card. */
 export function ConnectionStatus({
@@ -60,15 +66,24 @@ const contactFor = (contacts: Contact[], pubkyId: string) =>
 
 function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: Contact[] }) {
   const { config } = useContext(ConfigContext)
+  const { navigate } = useContext(NavigationContext)
+  const { focusRequest } = useContext(PaykitContext)
   const contact = contactFor(contacts, request.id.payee)
   const name = contact ? contactDisplayName(contact) : shortPubky(request.id.payee)
   const sats = request.amount.asset === 'btc' ? btcToSats(request.amount.value) : undefined
   const amount =
     sats !== undefined ? prettyBitcoinAmount(sats, config.unit) : `${request.amount.value} ${request.amount.asset}`
-  const status = requestStatus(request.status)
+  const status = requestStatus(request.status, Boolean(request.receipt))
+  const open = () => {
+    focusRequest(request.id)
+    navigate(Pages.PaykitRequest)
+  }
   return (
-    <div
+    <button
+      type='button'
       className='settings-row contact-list-item paykit-request'
+      aria-label={`Payment request from ${name}`}
+      onClick={open}
       data-testid='paykit-incoming-row'
       data-request-hash={request.id.requestHash}
       data-payee={request.id.payee}
@@ -76,6 +91,7 @@ function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: 
       data-amount={request.amount.value}
       data-sats={sats}
       data-note={request.paymentReference}
+      data-receipt={request.receipt ? 'received' : 'none'}
     >
       <span className='settings-row__main'>
         <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
@@ -90,7 +106,10 @@ function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: 
         <strong>{amount}</strong>
         <span className={`paykit-request__status paykit-request__status--${status.tone}`}>{status.text}</span>
       </span>
-    </div>
+      <span className='settings-row__chevron' aria-hidden='true'>
+        <ArrowIcon />
+      </span>
+    </button>
   )
 }
 
@@ -111,7 +130,7 @@ export function IncomingRequests({ payee, emptyText }: { payee?: string; emptyTe
       {requests.length ? (
         <div className='contact-list settings-row-group'>
           {requests.map((request) => (
-            <RequestRow key={`${request.id.payee}/${request.id.requestHash}`} request={request} contacts={contacts} />
+            <RequestRow key={requestKeyOf(request.id)} request={request} contacts={contacts} />
           ))}
         </div>
       ) : (

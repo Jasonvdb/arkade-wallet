@@ -42,10 +42,22 @@ import { lnurlSends, recordLnurlSend, watchLnurlConfirmation } from '../../../li
 import { useTranslation } from '../../../providers/language'
 import { readContacts, rememberSentDestination } from '../../../lib/contacts'
 import { BackupContext } from '../../../providers/backup'
+import { PaykitContext } from '../../../paykit/provider'
+import { PaykitCallError } from '../../../paykit/protocol'
+import { refusalText, requestKeyOf } from '../../../paykit/pay'
+import {
+  approvalKey,
+  approvePayment,
+  attemptOf,
+  quoteExit,
+  subscribePayProgress,
+  withdrawApproval,
+} from '../../../paykit/walletRail'
+import { PayRequestContext, PayRequestProgress, type PayStep } from '../../../paykit/components/PayRequest'
 
 export default function SendDetails() {
   const displayContext = useAmountDisplayContext()
-  const { navigate } = useContext(NavigationContext)
+  const { navigate, replace } = useContext(NavigationContext)
   const { appIntent, sendInfo, setAppIntent, setSendInfo } = useContext(FlowContext)
   const { calcOnchainOutputFee, intentFee } = useContext(FeesContext)
   const isAssetSend = Boolean(sendInfo.account || sendInfo.assets?.length)
@@ -54,6 +66,7 @@ export default function SendDetails() {
   const { aspInfo } = useContext(AspContext)
   const { sendRouter } = useContext(SwapsContext)
   const { backupContacts } = useContext(BackupContext)
+  const { call: paykitCall, data: paykitData, identity: paykitIdentity } = useContext(PaykitContext)
   const { t } = useTranslation()
 
   const assetId = sendInfo.account?.assetId ?? sendInfo.assets?.[0]?.assetId
@@ -68,6 +81,12 @@ export default function SendDetails() {
   const [pricing, setPricing] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendDone, setSendDone] = useState(false)
+  // Paying a contact's Payment Request (Paykit): the step in flight, and a retry after a failure.
+  const paykit = sendInfo.paykit
+  const [payStep, setPayStep] = useState<PayStep>('preparing')
+  const [payTxid, setPayTxid] = useState<string>()
+  const [payAttempt, setPayAttempt] = useState<string>()
+  const [retry, setRetry] = useState<() => void>()
 
   const { address, arkAddress, invoice, lnUrl, pendingLnSend, satoshis } = sendInfo
   const lnurlRoute = Boolean(lnUrl && pendingLnSend && isLnurlRail(pendingLnSend.railId))
@@ -137,18 +156,21 @@ export default function SendDetails() {
               : 'none'
     // `direction` is display-only; keep logic keyed on `destinationType`.
     const direction =
-      destinationType === 'arkade'
-        ? t('send.payingInsideArkade')
-        : destinationType === 'lightning'
-          ? t('send.payingToLightning')
-          : destinationType === 'mainnet'
-            ? t('send.payingToMainnet')
-            : ''
+      paykit && destinationType === 'mainnet'
+        ? `Paying ${paykit.name} on-chain`
+        : destinationType === 'arkade'
+          ? t('send.payingInsideArkade')
+          : destinationType === 'lightning'
+            ? t('send.payingToLightning')
+            : destinationType === 'mainnet'
+              ? t('send.payingToMainnet')
+              : ''
 
     // The RFQ lockup carries exactly the invoice amount (exact-out, fee_bps
     // from the card; 0 today), so total == satoshis on the Lightning path.
-    const total = pendingLnSend ? pendingLnSend.total : satoshis
-    const amount = destinationType === 'mainnet' ? satoshis - calcOnchainOutputFee() : satoshis
+    // A Payment Request names what the payee receives: its fees come on top.
+    const total = pendingLnSend ? pendingLnSend.total : paykit ? satoshis + calcOnchainOutputFee() : satoshis
+    const amount = destinationType === 'mainnet' && !paykit ? satoshis - calcOnchainOutputFee() : satoshis
     const fees = total - amount > 0 ? total - amount : 0
     setDetails({
       destination,
@@ -166,7 +188,67 @@ export default function SendDetails() {
   }, [sendInfo])
 
   useEffect(() => {
-    if (!pricing || !details?.destination || !details.satoshis) return
+    if (!pricing || !paykit || !details?.destination || !details.satoshis || !svcWallet) return
+    let live = true
+    const asked = details.satoshis
+    const exitDeps = {
+      wallet: svcWallet,
+      outputFee: calcOnchainOutputFee,
+      intentFee,
+      dust: () => Number(aspInfo.dust),
+    }
+    const tryAgain = () => {
+      setRetry(undefined)
+      setError('')
+      setButtonLabel(t('send.gettingQuote'))
+      setPricing(true)
+    }
+    // Only the collaborative exit pays a request: its output is the payee's address.
+    type Priced = { quote: RouteQuote } | { failure: unknown; ready?: number }
+    const price = async (): Promise<Priced> => {
+      try {
+        return { quote: await quoteExit(exitDeps, details.destination!, asked) }
+      } catch (failure) {
+        consoleError(failure, 'Paykit could not price the request')
+        if (!(failure instanceof InsufficientFundsError)) return { failure }
+        // Coins still boarding count in the balance but cannot leave by exit until they settle.
+        const most = await maxCollaborativeExit(svcWallet, intentFee(), Number(aspInfo.dust)).catch(() => 0)
+        return { failure, ready: Math.max(0, most - calcOnchainOutputFee()) }
+      }
+    }
+    price().then((priced) => {
+      if (!live) return
+      setPricing(false)
+      if ('quote' in priced) {
+        const { quote } = priced
+        setDetails((prev) => (prev ? { ...prev, fees: quote.fee, total: quote.total } : prev))
+        return offerToSign(quote.total)
+      }
+      if (priced.ready === undefined) {
+        setError(extractError(priced.failure))
+        setButtonLabel('Try again')
+        return setRetry(() => tryAgain)
+      }
+      if (balance >= asked) {
+        setError(
+          priced.ready > 0
+            ? `Your bitcoin is still settling: only ${prettyNumber(priced.ready)} sats are ready to send. ` +
+                'The rest is usually ready within a minute.'
+            : 'Your bitcoin is still settling. You can pay once it is ready, usually within a minute.',
+        )
+        setButtonLabel('Try again')
+        return setRetry(() => tryAgain)
+      }
+      setButtonLabel(t('send.insufficientFunds'))
+      setError(t('send.insufficientFundsDetail', { balance: prettyNumber(balance) }))
+    })
+    return () => {
+      live = false
+    }
+  }, [pricing, paykit, details?.destination, details?.satoshis])
+
+  useEffect(() => {
+    if (!pricing || paykit || !details?.destination || !details.satoshis) return
     let live = true
     const asked = details.satoshis
     type Priced = { cost: Pick<RouteQuote, 'amount' | 'fee' | 'total'>; most?: number }
@@ -365,8 +447,98 @@ export default function SendDetails() {
     setSending(false)
   }
 
+  /** The progress the wallet's rail reports for this request's payment (the exit can take a batch round). */
+  useEffect(() => {
+    if (!paykit) return
+    const key = approvalKey(paykit.address, paykit.sats)
+    return subscribePayProgress((progress) => {
+      if (progress.key !== key) return
+      if (progress.stage === 'batch') setPayStep('batch')
+      if (progress.stage === 'paid') {
+        setPayStep('paid')
+        setPayTxid(progress.txid)
+      }
+      setPayAttempt(progress.attemptId)
+    })
+  }, [paykit])
+
+  /** Paid, and the proof is on its way to the payee: the request screen follows the receipt. */
+  const paykitPaid = (txid: string | undefined) => {
+    if (!paykit) return
+    setPayStep('proof-sent')
+    if (txid) {
+      setPayTxid(txid)
+      saveTransactionActivityMetadata(txid, { destination: paykit.address, networkFee: details?.fees })
+    }
+    reloadWallet().catch(consoleError)
+    // A moment on the finished steps, then the request itself, where the receipt arrives.
+    setTimeout(() => replace(Pages.PaykitRequest, [Pages.Settings, Pages.Wallet]), 1500)
+  }
+
+  const paykitFailed = (message: string, retryable = true) => {
+    setSending(false)
+    setPayStep('preparing')
+    setError(message)
+    if (retryable) {
+      setButtonLabel('Try again')
+      setRetry(() => () => {
+        setRetry(undefined)
+        setError('')
+        offerToSign(details?.total ?? 0)
+      })
+    } else {
+      setButtonLabel('View request')
+      setRetry(() => () => replace(Pages.PaykitRequest, [Pages.Settings, Pages.Wallet]))
+    }
+  }
+
+  /** Pays the request through the engine; the engine calls the wallet's rail, which pays by exit. */
+  const payPaykit = async () => {
+    if (!paykit || !details?.total) return
+    approvePayment(paykit.address, paykit.sats, details.total, requestKeyOf(paykit.id))
+    setPayStep('preparing')
+    setPayTxid(undefined)
+    try {
+      const outcome = await paykitCall('payRequest', { id: paykit.id, options: { endpoint: paykit.endpointId } })
+      setPayAttempt(outcome.attemptId)
+      const record = paykitIdentity ? attemptOf(paykitIdentity, outcome.attemptId) : undefined
+      if (outcome.outcome === 'paid') return paykitPaid(record?.txid)
+      if (outcome.outcome === 'failed') {
+        withdrawApproval(paykit.address, paykit.sats)
+        return paykitFailed(record?.error ?? 'The payment did not go through. Nothing was sent.')
+      }
+      if (outcome.outcome === 'uncertain')
+        return paykitFailed('The payment may have gone through. Check the request before paying again.', false)
+      // Still paying (a long batch round): the request turns paid when the engine finishes it.
+    } catch (err) {
+      withdrawApproval(paykit.address, paykit.sats)
+      consoleError(err, 'Paykit could not pay the request')
+      if (err instanceof PaykitCallError && err.code === 'refused')
+        return paykitFailed(refusalText(err.reason, paykit.name), false)
+      paykitFailed('The payment could not start. Nothing was sent.')
+    }
+  }
+
+  // A payment the engine finishes later (`pending`) shows as paid on the request.
+  const paidRequest = paykit
+    ? paykitData.requests.find((request) => requestKeyOf(request.id) === requestKeyOf(paykit.id))
+    : undefined
+  useEffect(() => {
+    if (!sending || !paykit || payStep === 'proof-sent' || paidRequest?.status !== 'paid') return
+    const record = paykitIdentity && payAttempt ? attemptOf(paykitIdentity, payAttempt) : undefined
+    paykitPaid(record?.txid ?? payTxid)
+  }, [sending, paidRequest?.status])
+
   const handleContinue = async () => {
+    if (retry) return retry()
     if (!details || !svcWallet || pricing) return
+    if (paykit) {
+      if (!details.total || !details.satoshis) return
+      setNotice('')
+      setError('')
+      setSending(true)
+      return void payPaykit()
+    }
     if (!isAssetSend && (!details.total || !details.satoshis)) return
     if (isAssetSend && !arkAddress) {
       setError(t('send.assetsOnlyToArkade'))
@@ -406,7 +578,17 @@ export default function SendDetails() {
     <>
       <Header text={t('send.signTransaction')} back />
       <Content>
-        {sending ? (
+        {sending && paykit ? (
+          <Padded>
+            <FlexCol>
+              <PayRequestContext request={paykit} />
+              {amountDisplay ? (
+                <TransactionAmountSummary amount={amountDisplay} label={t('send.amountToSend')} />
+              ) : null}
+              <PayRequestProgress request={paykit} step={payStep} txid={payTxid} />
+            </FlexCol>
+          </Padded>
+        ) : sending ? (
           <LoadingLogo
             text={
               lnurlRoute && details?.destination === lnUrl
@@ -424,6 +606,7 @@ export default function SendDetails() {
         ) : (
           <Padded>
             <FlexCol>
+              {paykit ? <PayRequestContext request={paykit} /> : null}
               <ErrorMessage error={Boolean(error || notice)} text={error || notice} />
               {details && amountDisplay ? (
                 <TransactionAmountSummary amount={amountDisplay} label={t('send.amountToSend')} />
@@ -438,7 +621,14 @@ export default function SendDetails() {
         )}
       </Content>
       <ButtonsOnBottom>
-        {sending ? null : <Button onClick={handleContinue} label={buttonLabel} disabled={Boolean(error) || pricing} />}
+        {sending ? null : (
+          <Button
+            onClick={handleContinue}
+            label={buttonLabel}
+            disabled={(Boolean(error) && !retry) || pricing}
+            testId={paykit ? 'paykit-pay-confirm' : undefined}
+          />
+        )}
       </ButtonsOnBottom>
     </>
   )

@@ -2,6 +2,7 @@ import {
   ReactNode,
   createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -9,12 +10,16 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { consoleError } from '../lib/logs'
+import { AspContext } from '../providers/asp'
+import { FeesContext } from '../providers/fees'
+import { WalletContext } from '../providers/wallet'
 import { PaykitClient, type HostHandlers } from './client'
 import { paykitConfig, type HomeserverBackend } from './config'
 import { createHomeserver } from './homeserver'
 import { pubkyIdOf, secretToHex, storePrefixFor } from './identity'
-import type { EngineCalls, EngineEvent, EngineOp } from './protocol'
+import type { EngineCalls, EngineEvent, EngineOp, RequestId } from './protocol'
 import { noPaymentsRail, type PageRail } from './rail'
+import { walletRail, type ExitDeps } from './walletRail'
 import { identitySecretState, subscribeIdentitySecret } from './secret'
 import { PaykitSync, type PaykitSnapshot } from './sync'
 import { acquireTabLock } from './tabLock'
@@ -52,6 +57,9 @@ export interface PaykitContextValue extends PaykitState {
   data: PaykitSnapshot
   /** Reads the saved contacts again now, such as right after a Pubky contact was saved or deleted. */
   refreshContacts: () => void
+  /** The Payment Request the request screen shows. */
+  focusedRequest?: RequestId
+  focusRequest: (id: RequestId | undefined) => void
 }
 
 const NO_DATA: PaykitSnapshot = { connections: {}, requests: [], requestsLoaded: false }
@@ -68,6 +76,7 @@ export const PaykitContext = createContext<PaykitContextValue>({
   subscribe: () => () => {},
   data: NO_DATA,
   refreshContacts: () => {},
+  focusRequest: () => {},
 })
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -85,8 +94,16 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0)
   const clientRef = useRef<PaykitClient>()
   const listeners = useRef(new Set<(event: EngineEvent) => void>())
-  // The rail the engine calls. Paying and verifying plug in here once they are wired to the wallet.
+  // The rail the engine calls: the wallet's collaborative exit, read from the wallet when a payment runs.
   const railRef = useRef<PageRail>(noPaymentsRail)
+  const { svcWallet } = useContext(WalletContext)
+  const { calcOnchainOutputFee, intentFee } = useContext(FeesContext)
+  const { aspInfo } = useContext(AspContext)
+  const exitDeps = useRef<ExitDeps>()
+  exitDeps.current = svcWallet
+    ? { wallet: svcWallet, outputFee: calcOnchainOutputFee, intentFee, dust: () => Number(aspInfo.dust) }
+    : undefined
+  const [focusedRequest, setFocusedRequest] = useState<RequestId>()
 
   useEffect(() => {
     if (!paykitConfig.enabled) return setState({ status: 'off' })
@@ -97,6 +114,7 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
     const ownIdentity = pubkyIdOf(secret)
     const abort = new AbortController()
     const homeserver = createHomeserver(paykitConfig, secret, ownIdentity)
+    railRef.current = walletRail(ownIdentity, () => exitDeps.current)
     let client: PaykitClient | undefined
     let releaseLock = () => {}
 
@@ -148,6 +166,7 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
         storePrefix: storePrefixFor(ownIdentity),
         clientId: paykitConfig.clientId,
         endpoints: paykitConfig.endpoints,
+        payLimitMs: paykitConfig.payLimitMs,
       })
       if (abort.signal.aborted) return
       if (result.identity !== ownIdentity) throw new Error('the engine started with another identity')
@@ -223,8 +242,10 @@ export function PaykitProvider({ children }: { children: ReactNode }) {
       subscribe,
       data,
       refreshContacts,
+      focusedRequest,
+      focusRequest: setFocusedRequest,
     }),
-    [state, retry, call, subscribe, data, refreshContacts],
+    [state, retry, call, subscribe, data, refreshContacts, focusedRequest],
   )
 
   return <PaykitContext.Provider value={value}>{children}</PaykitContext.Provider>

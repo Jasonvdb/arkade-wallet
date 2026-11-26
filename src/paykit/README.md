@@ -14,12 +14,15 @@ the `paykit-wasm` build of paykit-rs, vendored in `pkg/`, so the wallet needs no
 | `provider.tsx`              | `PaykitProvider` / `PaykitContext`: starts the engine for the unlocked wallet                               |
 | `secret.ts`, `identity.ts`  | The Pubky identity: first 32 bytes of the BIP39 seed, held in memory only                                   |
 | `homeserver.ts`             | Homeserver adapters: `fake` (local test server) and `staging` (`@synonymdev/pubky`)                         |
-| `rail.ts`                   | The wallet's payment method as the engine calls it (not wired to payments yet)                              |
+| `rail.ts`                   | The shape of the wallet's payment method as the engine calls it                                             |
+| `walletRail.ts`             | The rail: pays an approved request by collaborative exit, keeps one record per attempt                      |
+| `pay.ts`                    | What a request asks this wallet to pay, refusal texts, the send screen's `PaykitSend`                       |
 | `tabLock.ts`                | One tab runs the engine (Web Lock); another tab waits and takes over                                        |
 | `screens/PubkyIdentity.tsx` | Settings > Pubky identity                                                                                   |
 | `contacts.ts`               | Pubky IDs as contacts (`pubky<id>` in the wallet's contacts), connection records                            |
 | `sync.ts`                   | `PaykitSync`: allows each Pubky contact, probes whether it added the wallet back, follows incoming requests |
-| `components/`               | Connection status and the incoming Payment Requests, shown in Settings > Contacts                           |
+| `components/`               | Connection status, incoming Payment Requests, and the send screen's request card and progress               |
+| `screens/PaykitRequest.tsx` | One Payment Request (`Pages.PaykitRequest`): Approve, Decline, the payment and the receipt                  |
 
 ## Contacts
 
@@ -32,6 +35,26 @@ message ID and the connected time are kept per identity in localStorage (`paykit
 connected contact stays connected.
 
 The engine's own feed loop receives, sends and runs the signer's due work while the wallet is open.
+
+## Paying a Payment Request
+
+1. A request row (contacts screen or the contact's page) opens `Pages.PaykitRequest`: who asks, how much, the
+   note and the address. Approve, or Decline (`rejectRequest`, two taps).
+2. Approve opens the wallet's own send confirmation (`Send/Details.tsx`) with `sendInfo.paykit`. The amount is
+   what the payee receives; fees come on top. It is priced with the collaborative exit only (`quoteExit`).
+   Coins still boarding cannot leave by exit: the screen says the bitcoin is still settling and offers
+   Try again.
+3. Tap to Sign registers an approval (address, amount, most the wallet may spend) and calls `payRequest`.
+   The engine calls the rail's `pay`, which pays by exit through the wallet's router restricted to
+   `WALLET_EXIT_RAIL`, and answers `{status: "paid", proof: {txid}}`. The txid is the batch transaction
+   that holds the payee's output.
+4. While the exit waits for a batch round, the screen shows the steps. Once paid, the request screen
+   follows, first "Waiting for receipt", then the receipt.
+
+The rail refuses (`failed`, nothing sent) a payment without a matching approval or whose quote costs more
+than approved. Each attempt is recorded in localStorage `paykit.attempts.v1.<id>` before coins move; a
+repeat or a restart answers from it. An exit that fails after coins may have moved is recorded `unknown`
+and stays pending: it is never reported as failed, so it is never paid twice.
 
 ## Configuration (`VITE_PAYKIT_*`)
 
@@ -51,6 +74,9 @@ The engine's own feed loop receives, sends and runs the signer's due work while 
 stack. `PAYKIT_SHOTS_DIR` saves screenshots; `ARKDEMO` names the demo's `arkdemo` script for funding.
 
 ## Demo shortcuts
+
+- A payment cut off by a reload while its exit runs stays "paying" for good: the rail cannot tell whether
+  the batch went through.
 
 - The identity key lives in the browser, next to the wallet's keys, and the Dispatch signer runs in the worker.
 - The production CSP (`nginx-security-headers.conf`, `public/_headers`) does not allow WebAssembly compilation

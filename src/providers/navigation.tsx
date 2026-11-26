@@ -7,6 +7,7 @@ import LoadingLogo from '../components/LoadingLogo'
 import NotesRedeem from '../screens/Wallet/Notes/Redeem'
 import NotesForm from '../screens/Wallet/Notes/Form'
 import NotesSuccess from '../screens/Wallet/Notes/Success'
+import PaykitRequest from '../paykit/screens/PaykitRequest'
 import ReceiveQRCode from '../screens/Wallet/Receive/QrCode'
 import ReceiveSuccess from '../screens/Wallet/Receive/Success'
 import SendForm from '../screens/Wallet/Send/Form'
@@ -63,6 +64,7 @@ export enum Pages {
   NotesRedeem,
   NotesForm,
   NotesSuccess,
+  PaykitRequest,
   ReceiveQRCode,
   ReceiveSuccess,
   SendForm,
@@ -148,6 +150,8 @@ export const pageComponent = (page: Pages): JSX.Element => {
       return <NotesForm />
     case Pages.NotesSuccess:
       return <NotesSuccess />
+    case Pages.PaykitRequest:
+      return <PaykitRequest />
     case Pages.ReceiveQRCode:
       return <ReceiveQRCode />
     case Pages.ReceiveSuccess:

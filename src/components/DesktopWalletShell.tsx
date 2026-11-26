@@ -28,7 +28,9 @@ export default function DesktopWalletShell({ logoVisible, page }: DesktopWalletS
 
   const activityActive = page === Pages.Activity || page === Pages.Transaction
   const settingsActive = page === Pages.Settings || page === Pages.Vtxos
-  const homeActive = !activityActive && !settingsActive
+  // A contact's Payment Request (Paykit) belongs to Contacts.
+  const paykitRequest = page === Pages.PaykitRequest
+  const homeActive = !activityActive && !settingsActive && !paykitRequest
 
   const goHome = () => {
     hapticLight()
@@ -48,7 +50,7 @@ export default function DesktopWalletShell({ logoVisible, page }: DesktopWalletS
     navigate(Pages.Settings)
   }
 
-  const contactsActive = page === Pages.Settings && option === SettingsOptions.Contacts
+  const contactsActive = (page === Pages.Settings && option === SettingsOptions.Contacts) || paykitRequest
 
   return (
     <aside className='desktop-wallet-shell' aria-label='Wallet navigation'>

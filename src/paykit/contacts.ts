@@ -25,6 +25,15 @@ export const pubkyContactAddress = (pubkyId: string): string => pubkyUri(pubkyId
 export const pubkyIdOfContact = (address: string): string | undefined =>
   address.startsWith('pubky') ? parsePubkyId(address) : undefined
 
+/**
+ * The Pubky ID a send recipient names, when it names one: `pubky<id>` or `pk:<id>`. A bare 52-character ID is
+ * not taken here, so no other kind of address is ever read as a Pubky ID.
+ */
+export const pubkyRecipientOf = (recipient: string): string | undefined => {
+  const trimmed = recipient.trim().toLowerCase()
+  return trimmed.startsWith('pubky') || trimmed.startsWith('pk:') ? parsePubkyId(trimmed) : undefined
+}
+
 /** Whether `address` is a Pubky ID the contacts list can save. */
 export const isPubkyContact = (address: string): boolean => parsePubkyId(address) !== undefined
 
