@@ -83,6 +83,7 @@ export default function Contacts() {
 
   const closeEditor = () => {
     setEditing(false)
+    setDeleting(false)
     setAddress('')
     setName('')
     setEditTarget(undefined)
@@ -139,7 +140,7 @@ export default function Contacts() {
     refresh()
     refreshContacts()
     setSelected(undefined)
-    setDeleting(false)
+    closeEditor()
   }
 
   // Paykit: ask a connected Pubky contact for a payment.
@@ -168,12 +169,18 @@ export default function Contacts() {
 
   return (
     <>
-      {/* On a contact's page the header's back returns to the list: the page has no second back of its own. */}
+      {/*
+        On a contact's page the header's back returns to the list: the page has no second back of its own. Edit
+        sits in the header, and deleting is in the editor, so nothing sits below the page's own content.
+      */}
       <Header
-        text={t('contacts.title')}
+        text={contact ? t('contacts.badge') : t('contacts.title')}
         back
         backFunc={contact ? () => setSelected(undefined) : undefined}
         backTestId={contact ? 'contact-back' : undefined}
+        auxFunc={contact ? () => openEdit(contact.address) : undefined}
+        auxText={contact ? t('contacts.editShort') : undefined}
+        auxAriaLabel={contact ? t('contacts.edit') : undefined}
       />
       <Content>
         <Padded>
@@ -218,16 +225,14 @@ export default function Contacts() {
                     </div>
                   </div>
                   {contactPubky ? (
-                    <>
+                    // Connected, the pill says so and Request payment shows what that allows.
+                    connectionOf(contactPubky) === 'connected' ? (
+                      <Button label='Request payment' onClick={requestPayment} testId='paykit-request-contact' />
+                    ) : (
                       <p className='paykit-contact-hint'>
-                        {connectionOf(contactPubky) === 'connected'
-                          ? `You and ${contactDisplayName(contact)} can send each other payment requests.`
-                          : `Share your Pubky ID with ${contactDisplayName(contact)}. Once they add you, you can send each other payment requests.`}
+                        {`Share your Pubky ID with ${contactDisplayName(contact)}. Once they add you, you can send each other payment requests.`}
                       </p>
-                      {connectionOf(contactPubky) === 'connected' ? (
-                        <Button label='Request payment' onClick={requestPayment} testId='paykit-request-contact' />
-                      ) : null}
-                    </>
+                    )
                   ) : (
                     <Button label={t('contacts.sendToName', { name: contactDisplayName(contact) })} onClick={send} />
                   )}
@@ -253,18 +258,6 @@ export default function Contacts() {
                     )}
                   </section>
                 )}
-                {/* Editing and deleting the contact close the page, below everything it shows. */}
-                <section className='contact-detail-footer'>
-                  <ErrorMessage error={Boolean(error)} text={error} />
-                  <div className='contact-detail-actions'>
-                    <Button label={t('contacts.edit')} secondary onClick={() => openEdit(contact.address)} />
-                    <Button
-                      label={deleting ? t('contacts.confirmDelete') : t('contacts.delete')}
-                      secondary
-                      onClick={() => (deleting ? remove() : setDeleting(true))}
-                    />
-                  </div>
-                </section>
               </>
             ) : (
               <>
@@ -390,6 +383,14 @@ export default function Contacts() {
           </InputContainer>
           <Button label={t('contacts.save')} onClick={save} testId='contact-save' />
           <Button label={t('common.cancel')} secondary onClick={closeEditor} />
+          {mode === 'edit' ? (
+            <Button
+              label={deleting ? t('contacts.confirmDelete') : t('contacts.delete')}
+              secondary
+              onClick={() => (deleting ? remove() : setDeleting(true))}
+              testId='contact-delete'
+            />
+          ) : null}
         </div>
       </SheetModal>
     </>

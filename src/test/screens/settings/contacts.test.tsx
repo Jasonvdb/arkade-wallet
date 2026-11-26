@@ -91,6 +91,8 @@ describe('Contacts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save contact' }))
     expect(screen.getByRole('heading', { name: 'New name' })).toBeInTheDocument()
 
+    // Deleting is in the editor, opened from the header's Edit.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit contact' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete contact' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }))
     expect(screen.getByText('No contacts yet')).toBeInTheDocument()
@@ -119,6 +121,7 @@ describe('Contacts', () => {
     expect(screen.queryByTestId('sheet-modal')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Alice' })).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit contact' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete contact' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }))
 
