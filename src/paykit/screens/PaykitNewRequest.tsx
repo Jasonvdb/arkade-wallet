@@ -169,6 +169,7 @@ export default function PaykitNewRequest() {
                 name='paykit-request-amount'
                 value={amountText}
                 focus
+                groupDigits
                 switchable
                 mode={mode}
                 onModeChange={changeMode}

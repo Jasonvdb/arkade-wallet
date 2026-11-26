@@ -44,4 +44,21 @@ describe('InputAmount', () => {
     expect(input.step).toBe('0.01')
     expect(onChange).toHaveBeenCalledWith('1.23')
   })
+
+  it('shows a grouped whole-sats entry with separators and passes the digits on', () => {
+    const onChange = vi.fn()
+    const config = { ...mockConfigContextValue.config, unit: Unit.SATS }
+    render(
+      <ConfigContext.Provider value={{ ...mockConfigContextValue, config, useFiat: false } as never}>
+        <FiatContext.Provider value={mockFiatContextValue as never}>
+          <InputAmount name='amount' groupDigits value='15000' onChange={onChange} />
+        </FiatContext.Provider>
+      </ConfigContext.Provider>,
+    )
+    const input = screen.getByRole('textbox') as HTMLInputElement
+
+    expect(input.value).toBe('15,000')
+    fireEvent.change(input, { target: { value: '15,0009' } })
+    expect(onChange).toHaveBeenCalledWith('150009')
+  })
 })
