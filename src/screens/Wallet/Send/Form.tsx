@@ -4,6 +4,9 @@ import Button from '../../../components/Button'
 import ErrorMessage from '../../../components/Error'
 import ButtonsOnBottom from '../../../components/ButtonsOnBottom'
 import { NavigationContext, Pages } from '../../../providers/navigation'
+import { PaykitContext } from '../../../paykit/provider'
+import { pubkyRecipientOf } from '../../../paykit/contacts'
+import { isActionable, payeeName } from '../../../paykit/pay'
 import { FlowContext } from '../../../providers/flow'
 import Padded from '../../../components/Padded'
 import {
@@ -196,6 +199,7 @@ export default function SendForm() {
   const { amountIsAboveMaxLimit, amountIsBelowMinLimit, utxoTxsAllowed, vtxoTxsAllowed } = useContext(LimitsContext)
   const { navigate } = useContext(NavigationContext)
   const { outcomeOf, sendRouter } = useContext(SwapsContext)
+  const { data: paykitData, focusRequest } = useContext(PaykitContext)
   const { t } = useTranslation()
   const {
     assetBalances,
@@ -406,6 +410,14 @@ export default function SendForm() {
     setRecipientError('')
     const parseRecipient = async () => {
       if (!recipient) return
+      // A Pubky contact is paid through the Payment Request it sent (Paykit), never to a typed address.
+      const pubkyId = pubkyRecipientOf(recipient)
+      if (pubkyId) {
+        const open = paykitData.requests.find((request) => request.id.payee === pubkyId && isActionable(request))
+        if (!open) return setRecipientError(`Ask ${payeeName(pubkyId)} to send you a payment request`)
+        focusRequest(open.id)
+        return navigate(Pages.PaykitRequest)
+      }
       const lowerCaseData = recipient.toLowerCase().replace(/^lightning:/, '')
       if (isURLWithLightningQueryString(recipient)) {
         const url = new URL(recipient)

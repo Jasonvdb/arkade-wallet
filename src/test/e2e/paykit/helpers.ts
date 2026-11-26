@@ -1,16 +1,17 @@
-import { execFileSync } from 'child_process'
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { createPrivateKey, createPublicKey } from 'crypto'
 import { existsSync, mkdirSync, rmSync } from 'fs'
 import { join, resolve } from 'path'
 import { mnemonicToSeedSync } from '@scure/bip39'
 import type { Page, TestInfo } from '@playwright/test'
-import { isDesktop, navigateToSettings } from '../utils'
+import { isDesktop, navigateHome, navigateToSettings, pickReceiveFormat, readClipboard } from '../utils'
 import { translations } from '../../../lib/i18n'
 
 const tr = translations.en
 
 export const FAKE_HOMESERVER = process.env.PAYKIT_E2E_FAKE_HOMESERVER ?? 'http://127.0.0.1:18590'
 export const DISPATCH_ORIGIN = 'https://localhost:18580'
+export const ESPLORA = process.env.PAYKIT_E2E_ESPLORA ?? 'http://127.0.0.1:3000/api'
 export const IDENTITY_PATH = '/pub/pubky-dispatch/v1/identity.json'
 
 const Z32 = 'ybndrfg8ejkmcpqxot1uwisza345h769'
@@ -105,6 +106,41 @@ export async function openContacts(page: Page): Promise<void> {
   await page.getByTestId('contacts-new').waitFor({ state: 'visible' })
 }
 
+/** The wallet's boarding address (Receive > Other formats > Bitcoin address), which `arkdemo fund` pays. */
+export async function boardingAddress(page: Page): Promise<string> {
+  await navigateHome(page)
+  await page.getByTestId('home-action-receive').click()
+  await pickReceiveFormat(page, 'Bitcoin address')
+  await page.getByTestId('btc-address-copy').click()
+  const address = (await readClipboard(page)).trim()
+  if (!/^bcrt1p[02-9ac-hj-np-z]{58}$/.test(address)) throw new Error(`not a boarding address: ${address}`)
+  await navigateHome(page)
+  return address
+}
+
+/**
+ * Saves `peerId` as a contact named `name` from the contacts screen, as a user does, and waits until the
+ * sheet has closed.
+ */
+export async function addPubkyContact(page: Page, name: string, peerId: string): Promise<void> {
+  await page.getByTestId('contacts-new').click()
+  await page.getByTestId('contact-address').click()
+  await page.getByTestId('contact-name').click()
+  await page.waitForTimeout(400)
+  await page.getByTestId('contact-name').fill(name)
+  await page.getByTestId('contact-address').fill(`pubky${peerId}`)
+  await page.getByTestId('contact-save').click()
+  await page.getByTestId('contact-save').waitFor({ state: 'hidden' })
+}
+
+/** The sum of a transaction's outputs to `address`, in sats, from the local esplora. */
+export async function satsPaidTo(txid: string, address: string): Promise<number> {
+  const answer = await fetch(`${ESPLORA}/tx/${txid}`)
+  if (!answer.ok) throw new Error(`esplora answered ${answer.status} for ${txid}`)
+  const tx = (await answer.json()) as { vout: { scriptpubkey_address?: string; value: number }[] }
+  return tx.vout.filter((out) => out.scriptpubkey_address === address).reduce((sum, out) => sum + out.value, 0)
+}
+
 /** One event line of the native peer (`paykit-peer` README, "Events"). */
 export type PeerEvent = { event: string; [field: string]: unknown }
 
@@ -142,11 +178,72 @@ export class Peer {
       .map((line) => JSON.parse(line) as PeerEvent)
   }
 
+  /**
+   * Starts `run` with `flags` (such as `--auto-confirm`) in the background, collecting its events, until
+   * `stop()`. One-shot commands must not run meanwhile: they share the state folder.
+   */
+  start(...flags: string[]): PeerRun {
+    return new PeerRun(spawn(this.binary, ['--state', this.state, 'run', ...flags]))
+  }
+
   /** Runs one command and returns its event named `event`; throws when it did not print one. */
   must(command: string, event: string, ...args: string[]): PeerEvent {
     const events = this.run(command, ...args)
     const found = events.find((line) => line.event === event)
     if (!found) throw new Error(`paykit-peer ${command} printed no ${event} event: ${JSON.stringify(events)}`)
     return found
+  }
+}
+
+/** A peer's `run` in the background: its events, as they come. */
+export class PeerRun {
+  readonly events: PeerEvent[] = []
+  private buffer = ''
+  private log = ''
+
+  constructor(private readonly child: ChildProcessWithoutNullStreams) {
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      this.buffer += chunk
+      const lines = this.buffer.split('\n')
+      this.buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim().startsWith('{')) continue
+        try {
+          this.events.push(JSON.parse(line) as PeerEvent)
+        } catch {
+          // Not an event line.
+        }
+      }
+    })
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => {
+      this.log = (this.log + chunk).slice(-20_000)
+    })
+  }
+
+  /** Waits for an event named `event` whose fields include `fields`. */
+  async waitFor(event: string, fields: Record<string, unknown> = {}, timeoutMs = 120_000): Promise<PeerEvent> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const found = this.events.find(
+        (line) => line.event === event && Object.entries(fields).every(([key, value]) => line[key] === value),
+      )
+      if (found) return found
+      if (this.child.exitCode !== null) break
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw new Error(
+      `paykit-peer printed no ${event} ${JSON.stringify(fields)}; events: ${JSON.stringify(this.events.slice(-20))}\n${this.log.slice(-4000)}`,
+    )
+  }
+
+  async stop(): Promise<void> {
+    if (this.child.exitCode !== null) return
+    const exited = new Promise((resolve) => this.child.once('exit', resolve))
+    this.child.stdin.end('quit\n')
+    const timer = setTimeout(() => this.child.kill('SIGTERM'), 5_000)
+    await exited
+    clearTimeout(timer)
   }
 }

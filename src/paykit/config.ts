@@ -23,6 +23,11 @@ export interface PaykitConfig {
   clientId: string
   /** The Payment Endpoints this wallet receives on and pays to. */
   endpoints: EndpointSupport[]
+  /**
+   * How long paying a request may take before the engine reports it as still paying. A collaborative exit
+   * waits for the operator's next batch round, so this is well above one round.
+   */
+  payLimitMs: number
 }
 
 const env = (value: string | undefined): string | undefined => fromRuntimeEnv(value)?.trim() || undefined
@@ -55,4 +60,5 @@ export const paykitConfig: PaykitConfig = {
     { identifier: BOARDING_ENDPOINT, fractionDigits: BTC_FRACTION_DIGITS },
     { identifier: SEGWIT_ENDPOINT, fractionDigits: BTC_FRACTION_DIGITS },
   ],
+  payLimitMs: 180_000,
 }

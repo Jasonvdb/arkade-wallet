@@ -3,6 +3,7 @@ import { ReactNode, SetStateAction, createContext, useState } from 'react'
 import type { Asset, AssetDetails, RouteQuote, ServiceWorkerWalletMode } from '@arkade-os/sdk'
 import { Tx } from '../lib/types'
 import type { FiatAccountSend } from '../lib/accountAssets'
+import type { PaykitSend } from '../paykit/pay'
 
 export interface InitInfo {
   password?: string
@@ -68,6 +69,8 @@ export type SendInfo = {
   /** The negotiated Lightning route: quoted on the form so the fee is on screen
    *  before the user signs, and `send()` is what the sign screen calls. */
   pendingLnSend?: RouteQuote
+  /** A contact's Payment Request this send pays (Paykit): paid by collaborative exit through the engine. */
+  paykit?: PaykitSend
   /** Which rail actually paid; only a swap rail still owes a claim. */
   railId?: string
   swapId?: string

@@ -57,13 +57,8 @@
   gap: 0.625rem;
 }
 
-.paykit-request {
-  cursor: default;
-}
-
-.paykit-request:active {
-  background: transparent;
-  transform: none;
+.paykit-request .settings-row__chevron {
+  margin-left: 0.25rem;
 }
 
 .paykit-request__amount {
@@ -104,5 +99,216 @@
 
 .paykit-requests-loading {
   color: color-mix(in srgb, var(--fg) 48%, transparent);
+  font-size: var(--text-sm);
+}
+
+/* A small spinner in the wallet's accent colour, for a step in progress. */
+.paykit-spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid color-mix(in srgb, var(--purple-700) 18%, transparent);
+  border-top-color: var(--purple-700);
+  border-radius: 999px;
+  animation: paykit-spin 0.9s linear infinite;
+}
+
+@keyframes paykit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paykit-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* The Payment Request screen. */
+
+.paykit-request-card,
+.paykit-pay-context,
+.paykit-pay-steps,
+.paykit-receipt {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.paykit-request-card {
+  align-items: center;
+}
+
+.paykit-request-card__pubky {
+  color: color-mix(in srgb, var(--fg) 48%, transparent);
+  font-size: var(--text-sm);
+}
+
+.paykit-status-pill {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--purple-700) 10%, var(--bg));
+  color: color-mix(in srgb, var(--purple-700) 78%, var(--fg));
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.paykit-status-pill--pending {
+  background: color-mix(in srgb, var(--orange-400) 12%, var(--bg));
+  color: color-mix(in srgb, var(--orange-500) 70%, var(--fg));
+}
+
+.paykit-status-pill--paid {
+  background: color-mix(in srgb, var(--green-500) 12%, var(--bg));
+  color: color-mix(in srgb, var(--green-600) 80%, var(--fg));
+}
+
+.paykit-status-pill--rejected,
+.paykit-status-pill--cancelled,
+.paykit-status-pill--expired {
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+  color: color-mix(in srgb, var(--fg) 56%, transparent);
+}
+
+.paykit-request-note {
+  align-self: stretch;
+  margin-top: -0.5rem;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  font-size: var(--text-base-size);
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.paykit-receipt {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--green-500) 8%, var(--bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--green-500) 20%, transparent);
+}
+
+.paykit-receipt--waiting {
+  background: var(--bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.paykit-receipt__icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--green-500);
+  color: #fff;
+}
+
+.paykit-receipt--waiting .paykit-receipt__icon {
+  background: transparent;
+}
+
+.paykit-receipt__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.paykit-receipt__copy strong {
+  font-size: var(--text-base-size);
+  font-weight: 500;
+}
+
+.paykit-receipt__copy small {
+  color: color-mix(in srgb, var(--fg) 56%, transparent);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* The send screen while it pays a Payment Request. */
+
+.paykit-pay-context {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-xl);
+  background: var(--bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.paykit-pay-context .contact-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: var(--text-base-size);
+}
+
+.paykit-pay-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-xl);
+  background: var(--bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.paykit-pay-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+
+.paykit-pay-step + .paykit-pay-step {
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.paykit-pay-step--active,
+.paykit-pay-step--done {
+  color: var(--fg);
+}
+
+.paykit-pay-step__icon {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+}
+
+.paykit-pay-step--done .paykit-pay-step__icon {
+  background: var(--green-500);
+  color: #fff;
+}
+
+.paykit-pay-step--active .paykit-pay-step__icon {
+  background: transparent;
+}
+
+.paykit-pay-step__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.paykit-pay-step__copy strong {
+  font-size: var(--text-base-size);
+  font-weight: 500;
+}
+
+.paykit-pay-step__copy small {
+  color: color-mix(in srgb, var(--fg) 56%, transparent);
   font-size: var(--text-sm);
 }

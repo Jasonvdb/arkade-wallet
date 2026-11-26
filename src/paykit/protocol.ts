@@ -66,6 +66,8 @@ export interface WorkerStartArgs {
   storePrefix?: string
   clientId?: string
   endpoints: EndpointSupport[]
+  /** How long `payRequest` waits for the rail's `pay` before it answers `pending`. */
+  payLimitMs?: number
 }
 
 /** Each engine call with its argument (calls that take two take an object) and its result. */

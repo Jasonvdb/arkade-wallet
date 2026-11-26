@@ -83,6 +83,7 @@ const engineOptions = (args: WorkerStartArgs) => ({
   },
   rail: {
     endpoints: args.endpoints,
+    payLimitMs: args.payLimitMs,
     pay: (payment: HostCalls['rail.pay']['args']) => host('rail.pay', payment),
     payment: (attemptId: string) => host('rail.payment', { attemptId }),
     verify: (check: HostCalls['rail.verify']['args']) => host('rail.verify', check),
