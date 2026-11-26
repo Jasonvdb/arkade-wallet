@@ -1,0 +1,124 @@
+import { useContext } from 'react'
+import { ConfigContext } from '../../providers/config'
+import { prettyBitcoinAmount, prettyLongText } from '../../lib/format'
+import { contactDisplayName, readContacts, type Contact } from '../../lib/contacts'
+import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
+import { PaykitContext } from '../provider'
+import type { OneTimeRequest } from '../protocol'
+import './Paykit.css'
+
+const initialFor = (label: string): string => label.trim().charAt(0).toUpperCase() || '?'
+
+/** A Pubky ID shortened for a row or a card: `pubky` and the first and last characters. */
+export const shortPubky = (pubkyId: string): string => prettyLongText(pubkyContactAddress(pubkyId), 10)
+
+/** Where a request stands for the payer, in words. Unknown statuses read as pending. */
+const REQUEST_STATUS: Record<string, { text: string; tone: string }> = {
+  open: { text: 'Requested', tone: 'open' },
+  held: { text: 'Requested', tone: 'open' },
+  beingPaidHere: { text: 'Paying', tone: 'pending' },
+  beingHandledByOtherWallet: { text: 'Paying elsewhere', tone: 'pending' },
+  mayBePaid: { text: 'Checking payment', tone: 'pending' },
+  paid: { text: 'Paid', tone: 'paid' },
+  rejected: { text: 'Declined', tone: 'rejected' },
+  cancelled: { text: 'Cancelled', tone: 'cancelled' },
+  expired: { text: 'Expired', tone: 'expired' },
+}
+const requestStatus = (status: string) => REQUEST_STATUS[status] ?? { text: 'Pending', tone: 'pending' }
+
+/** Whether a Pubky contact has added this wallet back: a dot and words, or a pill on the contact's card. */
+export function ConnectionStatus({
+  connection,
+  name,
+  pill,
+  testId,
+  pubkyId,
+}: {
+  connection: Connection
+  name: string
+  pill?: boolean
+  testId?: string
+  pubkyId?: string
+}) {
+  const text = connection === 'connected' ? 'Connected' : `Waiting for ${name} to add you`
+  return (
+    <span
+      className={`paykit-connection paykit-connection--${connection}${pill ? ' paykit-connection--pill' : ''}`}
+      data-testid={testId}
+      data-connection={connection}
+      data-pubky={pubkyId}
+    >
+      <span className='paykit-connection__dot' aria-hidden='true' />
+      <span className='paykit-connection__text'>{text}</span>
+    </span>
+  )
+}
+
+/** The contact that sent a request, by its Pubky ID, from the wallet's saved contacts. */
+const contactFor = (contacts: Contact[], pubkyId: string) =>
+  contacts.find((contact) => contact.address === pubkyContactAddress(pubkyId))
+
+function RequestRow({ request, contacts }: { request: OneTimeRequest; contacts: Contact[] }) {
+  const { config } = useContext(ConfigContext)
+  const contact = contactFor(contacts, request.id.payee)
+  const name = contact ? contactDisplayName(contact) : shortPubky(request.id.payee)
+  const sats = request.amount.asset === 'btc' ? btcToSats(request.amount.value) : undefined
+  const amount =
+    sats !== undefined ? prettyBitcoinAmount(sats, config.unit) : `${request.amount.value} ${request.amount.asset}`
+  const status = requestStatus(request.status)
+  return (
+    <div
+      className='settings-row contact-list-item paykit-request'
+      data-testid='paykit-incoming-row'
+      data-request-hash={request.id.requestHash}
+      data-payee={request.id.payee}
+      data-status={request.status}
+      data-amount={request.amount.value}
+      data-sats={sats}
+      data-note={request.paymentReference}
+    >
+      <span className='settings-row__main'>
+        <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
+          {initialFor(name)}
+        </span>
+        <span className='contact-list-item-copy'>
+          <strong>{name}</strong>
+          <small>{request.paymentReference}</small>
+        </span>
+      </span>
+      <span className='paykit-request__amount'>
+        <strong>{amount}</strong>
+        <span className={`paykit-request__status paykit-request__status--${status.tone}`}>{status.text}</span>
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The Payment Requests contacts sent this wallet, newest first: who asks, the note, the amount and where it
+ * stands. With `payee`, only that contact's. Shown once Paykit runs; nothing at all when there is none and
+ * `emptyText` is not given.
+ */
+export function IncomingRequests({ payee, emptyText }: { payee?: string; emptyText?: string }) {
+  const { status, data } = useContext(PaykitContext)
+  if (status !== 'ready' && status !== 'restarting') return null
+  const requests = data.requests.filter((request) => !payee || request.id.payee === payee)
+  if (!requests.length && !emptyText) return null
+  const contacts = readContacts()
+  return (
+    <section className='settings-section paykit-requests' data-testid='paykit-incoming'>
+      <p className='settings-section-label'>Payment requests</p>
+      {requests.length ? (
+        <div className='contact-list settings-row-group'>
+          {requests.map((request) => (
+            <RequestRow key={`${request.id.payee}/${request.id.requestHash}`} request={request} contacts={contacts} />
+          ))}
+        </div>
+      ) : (
+        <p className='contact-history-empty' data-testid='paykit-incoming-empty'>
+          {data.requestsLoaded ? emptyText : 'Loading payment requests…'}
+        </p>
+      )}
+    </section>
+  )
+}
