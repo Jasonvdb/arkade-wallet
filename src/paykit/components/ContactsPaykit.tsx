@@ -3,7 +3,9 @@ import ArrowIcon from '../../icons/Arrow'
 import { ConfigContext } from '../../providers/config'
 import { NavigationContext, Pages } from '../../providers/navigation'
 import ShieldIcon from '../../icons/ShieldCheckOutline'
-import { prettyBitcoinAmount, prettyLongText } from '../../lib/format'
+import ReceivedIcon from '../../icons/Received'
+import SentIcon from '../../icons/Sent'
+import { prettyBitcoinAmount, prettyDate, prettyLongText } from '../../lib/format'
 import { contactDisplayName, readContacts, type Contact } from '../../lib/contacts'
 import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
 import { methodName, privateEndpointOf } from '../lists'
@@ -11,12 +13,59 @@ import { requestKeyOf, shortPubky } from '../pay'
 import { PaykitContext } from '../provider'
 import type { OneTimeRequest, PayeeRequest } from '../protocol'
 import { readSent, type SentRecord } from '../receive'
+import { readRequestsSeen } from '../requestsSeen'
 import type { ProofCheck } from '../sync'
 import './Paykit.css'
 
 export { shortPubky }
 
 const initialFor = (label: string): string => label.trim().charAt(0).toUpperCase() || '?'
+
+const seconds = (ms: number) => Math.floor(ms / 1000)
+
+/**
+ * The left of a request row. On the contacts list: the contact's initial, the contact's name and the note.
+ * On a contact's page, where the section names the contact: which way the money goes (as on Activity), the
+ * note, and when.
+ */
+function RequestRowLead({
+  name,
+  note,
+  atMs,
+  direction,
+  fromContactPage,
+}: {
+  name: string
+  note: string
+  atMs?: number
+  direction: 'out' | 'in'
+  fromContactPage: boolean
+}) {
+  if (!fromContactPage) {
+    return (
+      <span className='settings-row__main'>
+        <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
+          {initialFor(name)}
+        </span>
+        <span className='contact-list-item-copy'>
+          <strong>{name}</strong>
+          <small>{note}</small>
+        </span>
+      </span>
+    )
+  }
+  return (
+    <span className='settings-row__main'>
+      <span className='activity-row__icon' aria-hidden='true'>
+        {direction === 'out' ? <SentIcon /> : <ReceivedIcon />}
+      </span>
+      <span className='contact-list-item-copy'>
+        <strong>{note}</strong>
+        {atMs ? <small>{prettyDate(seconds(atMs))}</small> : null}
+      </span>
+    </span>
+  )
+}
 
 /** Where a request stands for the payer, in words. Unknown statuses read as pending. */
 const REQUEST_STATUS: Record<string, { text: string; tone: string }> = {
@@ -104,7 +153,7 @@ function RequestRow({
 }) {
   const { config } = useContext(ConfigContext)
   const { navigate } = useContext(NavigationContext)
-  const { focusRequest, setReturnContact } = useContext(PaykitContext)
+  const { focusRequest, setReturnContact, identity } = useContext(PaykitContext)
   const contact = contactFor(contacts, request.id.payee)
   const name = contact ? contactDisplayName(contact) : shortPubky(request.id.payee)
   const sats = request.amount.asset === 'btc' ? btcToSats(request.amount.value) : undefined
@@ -131,15 +180,13 @@ function RequestRow({
       data-note={request.paymentReference}
       data-receipt={request.receipt ? 'received' : 'none'}
     >
-      <span className='settings-row__main'>
-        <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
-          {initialFor(name)}
-        </span>
-        <span className='contact-list-item-copy'>
-          <strong>{name}</strong>
-          <small>{request.paymentReference}</small>
-        </span>
-      </span>
+      <RequestRowLead
+        name={name}
+        note={request.paymentReference}
+        atMs={identity ? readRequestsSeen(identity)[requestKeyOf(request.id)] : undefined}
+        direction='out'
+        fromContactPage={fromContactPage}
+      />
       <span className='paykit-request__amount'>
         <strong>{amount}</strong>
         <span className={`paykit-request__status paykit-request__status--${status.tone}`}>{status.text}</span>
@@ -159,7 +206,7 @@ function RequestRow({
 export function IncomingRequests({
   payee,
   emptyText,
-  label = 'Payment requests',
+  label = 'Requests from contacts',
 }: {
   payee?: string
   emptyText?: string
@@ -236,15 +283,13 @@ function SentRow({
       data-check={check?.state ?? 'none'}
       data-sats={sats}
     >
-      <span className='settings-row__main'>
-        <span className='contact-avatar contact-avatar--row' aria-hidden='true'>
-          {initialFor(name)}
-        </span>
-        <span className='contact-list-item-copy'>
-          <strong>{name}</strong>
-          <small>{sent?.note ?? 'Payment request'}</small>
-        </span>
-      </span>
+      <RequestRowLead
+        name={name}
+        note={sent?.note ?? 'Payment request'}
+        atMs={sent?.createdAtMs}
+        direction='in'
+        fromContactPage={fromContactPage}
+      />
       <span className='paykit-request__amount'>
         <strong>{amount}</strong>
         <span className={`paykit-request__status paykit-request__status--${status.tone}`}>{status.text}</span>

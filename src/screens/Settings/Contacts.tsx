@@ -2,7 +2,6 @@ import { useContext, useState } from 'react'
 import { BackupContext } from '../../providers/backup'
 import './Contacts.css'
 import ArrowIcon from '../../icons/Arrow'
-import BackIcon from '../../icons/Back'
 import Button from '../../components/Button'
 import Content from '../../components/Content'
 import ErrorMessage from '../../components/Error'
@@ -169,25 +168,19 @@ export default function Contacts() {
 
   return (
     <>
-      <Header text={t('contacts.title')} back />
+      {/* On a contact's page the header's back returns to the list: the page has no second back of its own. */}
+      <Header
+        text={t('contacts.title')}
+        back
+        backFunc={contact ? () => setSelected(undefined) : undefined}
+        backTestId={contact ? 'contact-back' : undefined}
+      />
       <Content>
         <Padded>
           <div className='settings-page contact-page'>
             {contact ? (
               <>
                 <section className='contact-detail'>
-                  <div className='contact-detail-head'>
-                    <button
-                      type='button'
-                      className='contact-detail-back'
-                      data-testid='contact-back'
-                      aria-label={t('contacts.title')}
-                      onClick={() => setSelected(undefined)}
-                    >
-                      <BackIcon />
-                    </button>
-                    <span className='settings-section-label'>{t('contacts.saved')}</span>
-                  </div>
                   <div className='contact-identity'>
                     <span className='contact-avatar' aria-hidden='true'>
                       {initialFor(contactDisplayName(contact))}
@@ -238,25 +231,17 @@ export default function Contacts() {
                   ) : (
                     <Button label={t('contacts.sendToName', { name: contactDisplayName(contact) })} onClick={send} />
                   )}
-                  <div className='contact-detail-actions'>
-                    <Button label={t('contacts.edit')} secondary onClick={() => openEdit(contact.address)} />
-                    <Button
-                      label={deleting ? t('contacts.confirmDelete') : t('contacts.delete')}
-                      secondary
-                      onClick={() => (deleting ? remove() : setDeleting(true))}
-                    />
-                  </div>
-                  <ErrorMessage error={Boolean(error)} text={error} />
                 </section>
                 {contactPubky ? (
+                  // The requests come first, newest on top: a new one shows right under Request payment.
                   <div className='contact-history'>
-                    <PrivateDetails contact={contactPubky} name={contactDisplayName(contact)} />
-                    <SentRequests payer={contactPubky} />
                     <IncomingRequests
                       payee={contactPubky}
                       label={`Requests from ${contactDisplayName(contact)}`}
                       emptyText={`No payment requests from ${contactDisplayName(contact)} yet.`}
                     />
+                    <SentRequests payer={contactPubky} />
+                    <PrivateDetails contact={contactPubky} name={contactDisplayName(contact)} />
                   </div>
                 ) : (
                   <section className='settings-section contact-history'>
@@ -268,6 +253,18 @@ export default function Contacts() {
                     )}
                   </section>
                 )}
+                {/* Editing and deleting the contact close the page, below everything it shows. */}
+                <section className='contact-detail-footer'>
+                  <ErrorMessage error={Boolean(error)} text={error} />
+                  <div className='contact-detail-actions'>
+                    <Button label={t('contacts.edit')} secondary onClick={() => openEdit(contact.address)} />
+                    <Button
+                      label={deleting ? t('contacts.confirmDelete') : t('contacts.delete')}
+                      secondary
+                      onClick={() => (deleting ? remove() : setDeleting(true))}
+                    />
+                  </div>
+                </section>
               </>
             ) : (
               <>

@@ -147,7 +147,7 @@ describe('Contacts', () => {
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Alice' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Contacts' }))
+    fireEvent.click(screen.getByTestId('contact-back'))
     expect(screen.getByText('1 contact')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument()
   })
@@ -163,7 +163,7 @@ describe('Contacts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save as contact' }))
     fireEvent.change(screen.getByLabelText('Name (optional)'), { target: { value: 'Coffee' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save contact' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Contacts' }))
+    fireEvent.click(screen.getByTestId('contact-back'))
     expect(screen.getByText('2 contacts')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Coffee' })).toBeInTheDocument()
   })
@@ -187,7 +187,7 @@ describe('Contacts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit contact' }))
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: alice } })
     fireEvent.click(screen.getByRole('button', { name: 'Save contact' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Contacts' }))
+    fireEvent.click(screen.getByTestId('contact-back'))
 
     expect(screen.getByText('1 contact')).toBeInTheDocument()
     expect(screen.getByText('1 send recorded locally')).toBeInTheDocument()

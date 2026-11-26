@@ -13,11 +13,13 @@ interface HeaderProps {
   auxText?: string
   auxIcon?: JSX.Element
   back?: (() => void) | boolean
+  /** The back button's test ID, when a screen's back has a meaning of its own (default `header-back-btn`). */
+  backTestId?: string
   heading?: boolean
   text: string
 }
 
-export default function Header({ auxAriaLabel, auxFunc, auxText, back, text, auxIcon }: HeaderProps) {
+export default function Header({ auxAriaLabel, auxFunc, auxText, back, backTestId, text, auxIcon }: HeaderProps) {
   const { t } = useTranslation()
   const { goBack } = useContext(NavigationContext)
 
@@ -51,7 +53,12 @@ export default function Header({ auxAriaLabel, auxFunc, auxText, back, text, aux
       <FlexRow between>
         <div style={{ minWidth: '4rem', marginLeft: '0.5rem' }}>
           {handleBack ? (
-            <button type='button' onClick={handleBack} aria-label={t('common.back')} data-testid='header-back-btn'>
+            <button
+              type='button'
+              onClick={handleBack}
+              aria-label={t('common.back')}
+              data-testid={backTestId ?? 'header-back-btn'}
+            >
               <BackIcon />
             </button>
           ) : (

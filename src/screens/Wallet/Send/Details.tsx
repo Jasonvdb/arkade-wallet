@@ -53,7 +53,28 @@ import {
   subscribePayProgress,
   withdrawApproval,
 } from '../../../paykit/walletRail'
-import { PayRequestContext, PayRequestProgress, type PayStep } from '../../../paykit/components/PayRequest'
+import {
+  DONE_BEAT_MS,
+  PayRequestContext,
+  PayRequestDone,
+  PayRequestProgress,
+  usePacedStep,
+  type PayStep,
+} from '../../../paykit/components/PayRequest'
+import { paykitErrorText } from '../../../paykit/errors'
+import { pubkyContactAddress } from '../../../paykit/contacts'
+
+/**
+ * Paying a Payment Request: the amount is already the large figure above the table, and the request names what
+ * the payee receives, so the table shows where it goes and what leaves the wallet, and a fee only when there is
+ * one (the regtest operator charges none).
+ */
+const paykitDetails = ({ destination, direction, fees, total }: DetailsProps): DetailsProps => ({
+  destination,
+  direction,
+  fees: fees ? fees : undefined,
+  total,
+})
 
 export default function SendDetails() {
   const displayContext = useAmountDisplayContext()
@@ -66,7 +87,7 @@ export default function SendDetails() {
   const { aspInfo } = useContext(AspContext)
   const { sendRouter } = useContext(SwapsContext)
   const { backupContacts } = useContext(BackupContext)
-  const { call: paykitCall, data: paykitData, identity: paykitIdentity } = useContext(PaykitContext)
+  const { call: paykitCall, data: paykitData, identity: paykitIdentity, setReturnContact } = useContext(PaykitContext)
   const { t } = useTranslation()
 
   const assetId = sendInfo.account?.assetId ?? sendInfo.assets?.[0]?.assetId
@@ -86,6 +107,11 @@ export default function SendDetails() {
   const [payStep, setPayStep] = useState<PayStep>('preparing')
   const [payTxid, setPayTxid] = useState<string>()
   const [payAttempt, setPayAttempt] = useState<string>()
+  // A failure the rail reported while the engine still waits on it (see the progress listener below).
+  const [payFailure, setPayFailure] = useState<{ message: string; retryable: boolean }>()
+  // The steps follow the payment at a pace that can be read; then the success view stays until Done.
+  const shownStep = usePacedStep(payStep, sending && Boolean(paykit))
+  const [payDone, setPayDone] = useState(false)
   const [retry, setRetry] = useState<() => void>()
 
   const { address, arkAddress, invoice, lnUrl, pendingLnSend, satoshis } = sendInfo
@@ -225,7 +251,7 @@ export default function SendDetails() {
         return offerToSign(quote.total)
       }
       if (priced.ready === undefined) {
-        setError(extractError(priced.failure))
+        setError(paykitErrorText(priced.failure, 'prepare'))
         setButtonLabel('Try again')
         return setRetry(() => tryAgain)
       }
@@ -458,11 +484,40 @@ export default function SendDetails() {
         setPayStep('paid')
         setPayTxid(progress.txid)
       }
+      if (progress.stage === 'failed') {
+        // An exit that may have spent coins is reported to the engine as still paying: never offer a retry.
+        const record = paykitIdentity ? attemptOf(paykitIdentity, progress.attemptId) : undefined
+        setPayFailure({
+          message: progress.error ?? paykitErrorText(undefined, 'pay'),
+          retryable: record?.status !== 'unknown',
+        })
+      }
       setPayAttempt(progress.attemptId)
     })
   }, [paykit])
 
-  /** Paid, and the proof is on its way to the payee: the request screen follows the receipt. */
+  useEffect(() => {
+    if (!payFailure || !paykit) return
+    setPayFailure(undefined)
+    if (payStep === 'proof-sent') return
+    if (payFailure.retryable) withdrawApproval(paykit.address, paykit.sats)
+    paykitFailed(payFailure.message, payFailure.retryable)
+  }, [payFailure])
+
+  // The finished steps stay a moment, then the success view takes their place.
+  useEffect(() => {
+    if (!sending || !paykit || shownStep !== 'proof-sent') return setPayDone(false)
+    const timer = setTimeout(() => setPayDone(true), DONE_BEAT_MS)
+    return () => clearTimeout(timer)
+  }, [sending, paykit, shownStep])
+
+  /** Done: the contact's page, where the request now shows as paid. */
+  const leavePaid = () => {
+    if (paykit) setReturnContact(pubkyContactAddress(paykit.id.payee))
+    replace(Pages.Settings, [Pages.Settings, Pages.Wallet])
+  }
+
+  /** Paid, and the proof is on its way to the payee: the success view follows, and the receipt arrives there. */
   const paykitPaid = (txid: string | undefined) => {
     if (!paykit) return
     setPayStep('proof-sent')
@@ -471,13 +526,12 @@ export default function SendDetails() {
       saveTransactionActivityMetadata(txid, { destination: paykit.address, networkFee: details?.fees })
     }
     reloadWallet().catch(consoleError)
-    // A moment on the finished steps, then the request itself, where the receipt arrives.
-    setTimeout(() => replace(Pages.PaykitRequest, [Pages.Settings, Pages.Wallet]), 1500)
   }
 
   const paykitFailed = (message: string, retryable = true) => {
     setSending(false)
     setPayStep('preparing')
+    setPayDone(false)
     setError(message)
     if (retryable) {
       setButtonLabel('Try again')
@@ -519,7 +573,7 @@ export default function SendDetails() {
       consoleError(err, 'Paykit could not pay the request')
       if (err instanceof PaykitCallError && err.code === 'refused')
         return paykitFailed(refusalText(err.reason, paykit.name), false)
-      paykitFailed('The payment could not start. Nothing was sent.')
+      paykitFailed(paykitErrorText(err, 'pay'))
     }
   }
 
@@ -580,16 +634,20 @@ export default function SendDetails() {
 
   return (
     <>
-      <Header text={t('send.signTransaction')} back />
+      {payDone ? <Header text={t('transaction.success')} /> : <Header text={t('send.signTransaction')} back />}
       <Content>
-        {sending && paykit ? (
+        {payDone && paykit ? (
+          <Padded>
+            <PayRequestDone request={paykit} txid={payTxid} />
+          </Padded>
+        ) : sending && paykit ? (
           <Padded>
             <FlexCol>
               <PayRequestContext request={paykit} />
               {amountDisplay ? (
                 <TransactionAmountSummary amount={amountDisplay} label={t('send.amountToSend')} />
               ) : null}
-              <PayRequestProgress request={paykit} step={payStep} txid={payTxid} />
+              <PayRequestProgress request={paykit} step={shownStep} txid={payTxid} />
             </FlexCol>
           </Padded>
         ) : sending ? (
@@ -617,7 +675,11 @@ export default function SendDetails() {
               ) : null}
               <Details
                 details={
-                  details ? { ...details, amountDisplay, total: isAssetSend ? undefined : details.total } : undefined
+                  details && paykit
+                    ? paykitDetails(details)
+                    : details
+                      ? { ...details, amountDisplay, total: isAssetSend ? undefined : details.total }
+                      : undefined
                 }
               />
             </FlexCol>
@@ -625,7 +687,9 @@ export default function SendDetails() {
         )}
       </Content>
       <ButtonsOnBottom>
-        {sending ? null : (
+        {payDone ? (
+          <Button label='Done' onClick={leavePaid} testId='paykit-request-done' />
+        ) : sending ? null : (
           <Button
             onClick={handleContinue}
             label={buttonLabel}

@@ -375,3 +375,35 @@
   color: color-mix(in srgb, var(--fg) 56%, transparent);
   font-size: var(--text-sm);
 }
+
+/* The end of paying a request: the wallet's success mark, what was paid, and the contact's receipt. */
+
+.paykit-pay-done {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding-top: 0.5rem;
+}
+
+.paykit-pay-done__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.paykit-pay-done__mark {
+  display: inline-flex;
+}
+
+.paykit-pay-done__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.paykit-pay-done__copy .paykit-status-pill {
+  align-self: center;
+}

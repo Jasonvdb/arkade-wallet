@@ -40,9 +40,8 @@ const notConfirmedText = (reason: string | undefined, name: string): string => {
     case 'maybeCredited':
       return `That transaction already paid another request.`
     default:
-      return reason && !/^[a-z][A-Za-z]+$/.test(reason)
-        ? `${reason}.`
-        : `The payment ${name} sent could not be confirmed.`
+      // Never the engine's own words: an unknown reason reads as the general case.
+      return `The payment ${name} sent could not be confirmed.`
   }
 }
 
@@ -133,7 +132,7 @@ export default function PaykitSentRequest() {
   }
 
   const rows: TableData = [
-    ['Pay from', name, <UsersRound key='from' size={16} />],
+    ['From', name, <UsersRound key='from' size={16} />],
     ['Pay to', sent?.address, <TypeIcon key='to' />],
     ['Payment details', privateDetails ? 'Your private details' : undefined, <ShieldIcon key='details' />],
     ['Status', status.text, <StatusIcon key='status' />],
