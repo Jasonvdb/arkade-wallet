@@ -1,13 +1,16 @@
 import { finalizeEvent, getPublicKey, nip44, SimplePool, UnsignedEvent, Event, verifyEvent } from 'nostr-tools'
 import { EncryptedDirectMessage } from 'nostr-tools/kinds'
 import { consoleError } from './logs'
+import { isLocalOnly, isLoopbackUrl } from './localOnly'
 
 /** A loaded event, with the local time it arrived at (seconds). */
 export type BackupEvent = Event & { receivedAt: number }
 
 const nostrAppName = 'arkade_backup'
 const defaultRelays = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nostr.arkade.sh']
-const relays = import.meta.env.VITE_NOSTR_RELAY_URL ? [import.meta.env.VITE_NOSTR_RELAY_URL] : defaultRelays
+const configuredRelays = import.meta.env.VITE_NOSTR_RELAY_URL ? [import.meta.env.VITE_NOSTR_RELAY_URL] : defaultRelays
+// A local-only run keeps backups and discovery on loopback relays: the public defaults are dropped.
+const relays = isLocalOnly() ? configuredRelays.filter(isLoopbackUrl) : configuredRelays
 export const nostrRelayUrls: readonly string[] = relays
 
 let sharedPool: SimplePool | undefined

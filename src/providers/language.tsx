@@ -65,6 +65,7 @@ export const SETTINGS_OPTION_KEY: Record<SettingsOptions, string> = {
   [SettingsOptions.Notifications]: 'settings.notifications',
   [SettingsOptions.Notes]: 'settings.notes',
   [SettingsOptions.Password]: 'settings.changePassword',
+  [SettingsOptions.PubkyIdentity]: 'settings.pubkyIdentity',
   [SettingsOptions.Reset]: 'settings.resetWallet',
   [SettingsOptions.Server]: 'settings.server',
   [SettingsOptions.Solvers]: 'settings.solvers',

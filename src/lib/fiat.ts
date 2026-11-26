@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js'
 import { consoleError } from './logs'
+import { isLocalOnly } from './localOnly'
 import { Currencies, Unit } from './types'
 
 export interface FiatPrices {
@@ -40,6 +41,8 @@ export const reportingSatsForFiatAmount = (
 }
 
 export const getPriceFeed = async (): Promise<FiatPrices | undefined> => {
+  // No public price feed on a local-only run; the caller falls back to BTC.
+  if (isLocalOnly()) return undefined
   try {
     const resp = await fetch('https://blockchain.info/ticker')
     const json = await resp.json()

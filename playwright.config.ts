@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './src/test/e2e',
+  // The Paykit specs need the local demo services: playwright.paykit.config.ts runs them.
+  testIgnore: ['**/paykit/**'],
   timeout: 60000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
