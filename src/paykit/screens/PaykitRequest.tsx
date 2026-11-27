@@ -16,7 +16,7 @@ import StatusIcon from '../../icons/Status'
 import TypeIcon from '../../icons/Type'
 import UsersRound from '../../icons/UsersRound'
 import ShieldIcon from '../../icons/ShieldCheckOutline'
-import { prettyDate, prettyLongText } from '../../lib/format'
+import { prettyDate } from '../../lib/format'
 import { buildTransactionAmountDisplay } from '../../lib/transactionAmountDisplay'
 import { emptySendInfo, FlowContext } from '../../providers/flow'
 import { NavigationContext, Pages } from '../../providers/navigation'
@@ -118,11 +118,7 @@ export default function PaykitRequest() {
 
   const rows: TableData = [
     ['From', name, <UsersRound key='from' size={16} />],
-    [
-      'Pay to',
-      payTo ? prettyLongText(payTo, 12) : waitingForDetails ? `Waiting for ${name}'s details` : undefined,
-      <TypeIcon key='to' />,
-    ],
+    ['Pay to', payTo ?? (waitingForDetails ? `Waiting for ${name}'s details` : undefined), <TypeIcon key='to' />],
     ['Payment details', privateDetails ? `Shared privately by ${name}` : undefined, <ShieldIcon key='details' />],
     ['Status', status.text, <StatusIcon key='status' />],
     ['Transaction ID', attempt?.txid, <HashIcon key='txid' />],

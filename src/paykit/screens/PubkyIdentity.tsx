@@ -13,6 +13,7 @@ import CheckMarkIcon from '../../icons/CheckMark'
 import CopyIcon from '../../icons/Copy'
 import { prettyLongText } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
+import { isLocalOnly } from '../../lib/localOnly'
 import { useTranslation } from '../../providers/language'
 import Header from '../../screens/Settings/Header'
 import { pubkyUri } from '../identity'
@@ -67,7 +68,8 @@ function Placeholder({ status, onRetry }: { status: PaykitStatus; onRetry: () =>
 
 /**
  * The wallet's Pubky identity: the Pubky ID contacts use to find this wallet, as a QR code and text, and
- * whether Paykit is registered with the Pubky Dispatch.
+ * whether it is active. Outside a local-only run, also whether Paykit is registered with the Pubky Dispatch and
+ * which Homeserver keeps its files.
  */
 export default function PubkyIdentity() {
   const { status, identity, enrolment, appId, error, homeserver, retry } = useContext(PaykitContext)
@@ -91,11 +93,15 @@ export default function PubkyIdentity() {
     setCopied((await copyToClipboard(pubkyId)) ? 'copied' : 'failed')
   }
 
-  const details: TableData = [
-    ['Status', STATUS_TEXT[status]],
-    ['Pubky Dispatch', ready ? (enrolment === 'new' ? 'Registered just now' : 'Registered') : undefined],
-    ['Homeserver', HOMESERVER_TEXT[homeserver]],
-  ]
+  // A local-only run keeps the screen to what a person needs: the ID and whether it works. The Dispatch and
+  // Homeserver rows describe the local test setup, not the identity.
+  const details: TableData = isLocalOnly()
+    ? [['Status', STATUS_TEXT[status]]]
+    : [
+        ['Status', STATUS_TEXT[status]],
+        ['Pubky Dispatch', ready ? (enrolment === 'new' ? 'Registered just now' : 'Registered') : undefined],
+        ['Homeserver', HOMESERVER_TEXT[homeserver]],
+      ]
 
   return (
     <>

@@ -87,6 +87,23 @@
   margin-top: 1rem;
 }
 
+/*
+ * On a contact's page the rows are a little denser than on the lists, with the icons at the size of the
+ * private details' icons, so a page with a few requests each way and the details still fits a laptop screen.
+ */
+.contact-history .paykit-request,
+.contact-history .paykit-detail-row {
+  min-height: 3.5rem;
+  padding-block: 0.5rem;
+}
+
+.contact-history .paykit-request .activity-row__icon,
+.contact-history .paykit-request .activity-row__icon svg {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+}
+
 .paykit-requests {
   display: flex;
   flex-direction: column;

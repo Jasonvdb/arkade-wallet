@@ -11,7 +11,7 @@ import TypeIcon from '../../icons/Type'
 import { EASE_OUT_QUINT_TUPLE } from '../../lib/animations'
 import { prettyBitcoinAmount, prettyDate, prettyLongText } from '../../lib/format'
 import { ConfigContext } from '../../providers/config'
-import { requestKeyOf, type PaykitSend } from '../pay'
+import { requestKeyOf, shortAddress, type PaykitSend } from '../pay'
 import { PaykitContext } from '../provider'
 import { requestStatus } from './ContactsPaykit'
 import './Paykit.css'
@@ -84,7 +84,7 @@ export function PayRequestProgress({ request, step, txid }: { request: PaykitSen
     {
       id: 'paid',
       title: 'Paid on-chain',
-      detail: txid && at >= 2 ? `Transaction ${prettyLongText(txid, 8)}` : `To ${prettyLongText(request.address, 10)}`,
+      detail: txid && at >= 2 ? `Transaction ${prettyLongText(txid, 8)}` : `To ${shortAddress(request.address)}`,
       done: at >= 2,
     },
     {
@@ -135,7 +135,7 @@ export function PayRequestDone({ request, txid }: { request: PaykitSend; txid?: 
   const status = requestStatus(record?.status ?? 'paid', Boolean(receipt))
   const amount = prettyBitcoinAmount(request.sats, config.unit)
   const rows: TableData = [
-    ['Pay to', prettyLongText(request.address, 12), <TypeIcon key='to' />],
+    ['Pay to', request.address, <TypeIcon key='to' />],
     ['Payment details', request.listApp ? `Shared privately by ${request.name}` : undefined, <ShieldIcon key='pd' />],
     ['Transaction ID', txid, <HashIcon key='txid' />],
   ]

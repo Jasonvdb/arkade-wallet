@@ -145,7 +145,7 @@ test('should save contacts to nostr', async ({ page }) => {
   // verify contact is added
   await expect(page.getByRole('heading', { name: mockContact.name })).toBeVisible()
   await expect(page.getByText(mockContact.address)).toBeVisible()
-  await expect(page.getByText(tr.contacts.edit)).toBeVisible()
+  await expect(page.getByRole('button', { name: tr.contacts.edit })).toBeVisible()
 
   // restore wallet
   await resetAndRestoreWallet(page)

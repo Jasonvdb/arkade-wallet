@@ -3,6 +3,7 @@ import { useContext } from 'react'
 import { OptionsContext } from '../../providers/options'
 
 interface HeaderProps {
+  auxAriaLabel?: string
   auxFunc?: () => void
   auxText?: string
   backFunc?: () => void
@@ -11,11 +12,12 @@ interface HeaderProps {
   text: string
 }
 
-export default function Header({ auxFunc, auxText, backFunc, back, backTestId, text }: HeaderProps) {
+export default function Header({ auxAriaLabel, auxFunc, auxText, backFunc, back, backTestId, text }: HeaderProps) {
   const { goBack } = useContext(OptionsContext)
 
   return (
     <MainHeader
+      auxAriaLabel={auxAriaLabel}
       auxFunc={auxFunc}
       auxText={auxText}
       back={backFunc ? backFunc : back ? goBack : undefined}

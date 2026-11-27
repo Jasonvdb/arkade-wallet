@@ -12,6 +12,12 @@ export const requestKeyOf = (id: RequestId): string => `${id.payee}/${id.request
 /** A Pubky ID shortened for a row or a card: `pubky` and the first and last characters. */
 export const shortPubky = (pubkyId: string): string => prettyLongText(pubkyContactAddress(pubkyId), 10)
 
+/**
+ * A bitcoin address shortened for a row or a step: the first and last 11 characters, the same cut the wallet's
+ * detail tables make, so one address reads the same on a contact's page, a request and its payment.
+ */
+export const shortAddress = (address: string): string => prettyLongText(address)
+
 /** The name the wallet's contacts give this Pubky ID, or its short form. */
 export const payeeName = (pubkyId: string): string => {
   const contact = readContacts().find((item) => item.address === pubkyContactAddress(pubkyId))

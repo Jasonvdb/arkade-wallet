@@ -5,11 +5,11 @@ import { NavigationContext, Pages } from '../../providers/navigation'
 import ShieldIcon from '../../icons/ShieldCheckOutline'
 import ReceivedIcon from '../../icons/Received'
 import SentIcon from '../../icons/Sent'
-import { prettyBitcoinAmount, prettyDate, prettyLongText } from '../../lib/format'
+import { prettyBitcoinAmount, prettyDate } from '../../lib/format'
 import { contactDisplayName, readContacts, type Contact } from '../../lib/contacts'
 import { btcToSats, pubkyContactAddress, type Connection } from '../contacts'
 import { methodName, privateEndpointOf } from '../lists'
-import { requestKeyOf, shortPubky } from '../pay'
+import { requestKeyOf, shortAddress, shortPubky } from '../pay'
 import { PaykitContext } from '../provider'
 import type { OneTimeRequest, PayeeRequest } from '../protocol'
 import { readSent, type SentRecord } from '../receive'
@@ -376,14 +376,20 @@ export function PrivateDetails({ contact, name }: { contact: string; name: strin
             </span>
             <span className='contact-list-item-copy'>
               <strong>{`${name}'s details`}</strong>
-              <small data-testid='paykit-contact-details-method'>
-                {theirs ? methodName(theirs.endpointId) : `${name} has not shared details yet`}
+              {/* The kind of address and the address on one line, so the row is as tall as the one above. */}
+              <small>
+                <span data-testid='paykit-contact-details-method'>
+                  {theirs ? methodName(theirs.endpointId) : `${name} has not shared details yet`}
+                </span>
+                {theirs ? (
+                  <>
+                    {' · '}
+                    <span className='paykit-detail-row__address' data-testid='paykit-contact-details-address'>
+                      {shortAddress(theirs.address)}
+                    </span>
+                  </>
+                ) : null}
               </small>
-              {theirs ? (
-                <small className='paykit-detail-row__address' data-testid='paykit-contact-details-address'>
-                  {prettyLongText(theirs.address, 10)}
-                </small>
-              ) : null}
             </span>
           </span>
           <span
@@ -395,8 +401,7 @@ export function PrivateDetails({ contact, name }: { contact: string; name: strin
         </div>
       </div>
       <p className='paykit-contact-hint paykit-detail-hint'>
-        Only you and {name} can see these. A payment request between you can be paid to these details instead of an
-        address in the request.
+        Only you and {name} can see these. A request between you can be paid to them, with no address in it.
       </p>
     </section>
   )

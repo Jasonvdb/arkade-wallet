@@ -18,6 +18,8 @@ interface InputAmountProps {
   asset?: AssetOption
   disabled?: boolean
   focus?: boolean
+  /** Show a whole-sats entry with thousands separators (`15,000`). The field is then a text field. */
+  groupDigits?: boolean
   label?: string
   min?: number
   max?: number
@@ -40,6 +42,7 @@ export default function InputAmount({
   asset,
   disabled,
   focus,
+  groupDigits,
   label,
   min,
   max,
@@ -76,6 +79,8 @@ export default function InputAmount({
   // The entry's finest unit: what the stepper moves by, and the decimals typing keeps.
   const decimals = asset?.assetId ? asset.decimals : fiatEntry ? fiatDecimals() : config.unit === Unit.BTC ? 8 : 0
   const step = decimals > 0 ? `0.${'1'.padStart(decimals, '0')}` : '1'
+  // A number field cannot show separators, so a grouped whole-sats entry is a text field that keeps digits only.
+  const grouped = Boolean(groupDigits) && decimals === 0 && !asset?.assetId
 
   const toSats = (value: number): number => {
     return config.unit === Unit.BTC ? toSatoshis(value) : value
@@ -112,7 +117,8 @@ export default function InputAmount({
 
   const handleAmountChange = (ev: React.ChangeEvent<HTMLInputElement>) => {
     // collapse redundant leading zeros ("00.0004" → "0.0004", "007" → "7")
-    const [whole, fraction] = ev.currentTarget.value.replace(/^0+(?=\d)/, '').split('.')
+    const typed = grouped ? ev.currentTarget.value.replace(/\D/g, '') : ev.currentTarget.value
+    const [whole, fraction] = typed.replace(/^0+(?=\d)/, '').split('.')
     const textValue = fraction === undefined || decimals === 0 ? whole : `${whole}.${fraction.slice(0, decimals)}`
     onChange(textValue)
     if (asset?.assetId) return
@@ -182,15 +188,15 @@ export default function InputAmount({
         <input
           ref={input}
           name={name}
-          type='number'
+          type={grouped ? 'text' : 'number'}
           onFocus={onFocus}
           className='input [appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:[-webkit-appearance:none] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:[-webkit-appearance:none]'
-          inputMode='decimal'
-          step={step}
+          inputMode={grouped ? 'numeric' : 'decimal'}
+          step={grouped ? undefined : step}
           disabled={disabled}
           readOnly={readOnly}
           onChange={handleAmountChange}
-          value={value ?? ''}
+          value={grouped && value ? prettyNumber(value, 0) : (value ?? '')}
           onKeyUp={(ev) => ev.key === 'Enter' && onEnter && onEnter()}
         />
         <TextSecondary>{rightLabel}</TextSecondary>
