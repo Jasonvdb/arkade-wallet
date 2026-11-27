@@ -47,8 +47,12 @@ export type PayStep = 'preparing' | 'batch' | 'paid' | 'proof-sent'
 
 const ORDER: PayStep[] = ['preparing', 'batch', 'paid', 'proof-sent']
 
-/** The least time each step stays on screen, so it can be read even when the batch round is quick. */
-export const STEP_DWELL_MS = 1200
+/**
+ * The least time each step stays on screen, so a quick batch round still shows every step ticking by. It is short on
+ * purpose: the contact's wallet marks the request paid as soon as the proof arrives, and a longer hold here would
+ * still show "Waiting for the next batch round" while the contact already shows the request paid.
+ */
+export const STEP_DWELL_MS = 300
 /** How long the finished steps stay before the success view replaces them. */
 export const DONE_BEAT_MS = 900
 
